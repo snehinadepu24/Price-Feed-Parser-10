@@ -119,13 +119,13 @@ curl -X POST "https://api-t2.fyers.in/api/v3/validate-authcode" \
 4. **Update SSM Parameters:**
 ```bash
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/access_token" \
+  --name "/stock-pipeline/fyers/access_token" \
   --value "YOUR_ACCESS_TOKEN" \
   --type "SecureString" \
   --overwrite
 
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --name "/stock-pipeline/fyers/refresh_token" \
   --value "YOUR_REFRESH_TOKEN" \
   --type "SecureString" \
   --overwrite
@@ -176,7 +176,7 @@ echo -n "CLIENT_ID:APP_SECRET" | shasum -a 256
 **Solution:** Check AWS credentials and IAM permissions:
 ```bash
 aws sts get-caller-identity
-aws ssm describe-parameters --filters "Key=Name,Values=/stock-pipeline-mvp/fyers/"
+aws ssm describe-parameters --filters "Key=Name,Values=/stock-pipeline/fyers/"
 ```
 
 ### Issue: "Token validation failed"
@@ -212,9 +212,9 @@ Monthly:  Verify refresh token validity
 ### Check Current Tokens
 ```bash
 aws ssm get-parameters \
-  --names "/stock-pipeline-mvp/fyers/access_token" \
-          "/stock-pipeline-mvp/fyers/refresh_token" \
-          "/stock-pipeline-mvp/fyers/client_id" \
+  --names "/stock-pipeline/fyers/access_token" \
+    "/stock-pipeline/fyers/refresh_token" \
+    "/stock-pipeline/fyers/client_id" \
   --with-decryption
 ```
 
@@ -230,7 +230,7 @@ curl -H "Authorization: CLIENT_ID:ACCESS_TOKEN" \
 ### Monitor Lambda Logs
 ```bash
 aws logs filter-log-events \
-  --log-group-name "/aws/lambda/stock-pipeline-mvp-ingestion" \
+  --log-group-name "/aws/lambda/stock-pipeline-ingestion" \
   --filter-pattern "token" \
   --start-time $(date -d '1 hour ago' +%s)000
 ```
@@ -243,7 +243,7 @@ If your system stops working due to token issues:
 ```bash
 # Check last Lambda execution
 aws lambda invoke \
-  --function-name stock-pipeline-mvp-ingestion \
+  --function-name stock-pipeline-ingestion \
   --payload '{}' \
   response.json
 
@@ -254,11 +254,11 @@ cat response.json
 ### 2. Force Token Refresh
 ```bash
 # Delete cached access token (forces refresh)
-aws ssm delete-parameter --name "/stock-pipeline-mvp/fyers/access_token"
+aws ssm delete-parameter --name "/stock-pipeline/fyers/access_token"
 
 # Trigger Lambda to refresh
 aws lambda invoke \
-  --function-name stock-pipeline-mvp-ingestion \
+  --function-name stock-pipeline-ingestion \
   --payload '{}' \
   response.json
 ```

@@ -1,1 +1,0 @@
-{"statusCode": 200, "body": "{\"message\": \"\\u2705 MVP Ingestion completed: 0/10 symbols (0.0% success)\", \"s3_location\": \"s3://stock-pipeline-mvp-dev-ohlcv-5e23bf76/mvp-raw/year=2025/month=09/day=05/ohlcv_mvp_20250905_075041.json\", \"symbols_processed\": 0, \"total_symbols\": 10, \"success_rate\": 0.0, \"timestamp\": \"2025-09-05T07:50:42.135589\"}"}

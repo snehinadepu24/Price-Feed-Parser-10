@@ -22,8 +22,8 @@ $teamConfig = @{
     created_at = $timestamp
     aws_region = "ap-south-1"
     endpoints = @{
-        s3_bucket = "stock-pipeline-mvp-dev-ohlcv-{SUFFIX}"
-        sns_topic = "arn:aws:sns:ap-south-1:{ACCOUNT_ID}:stock-pipeline-mvp-alerts"
+    s3_bucket = "stock-pipeline-dev-ohlcv-{SUFFIX}"
+    sns_topic = "arn:aws:sns:ap-south-1:{ACCOUNT_ID}:stock-pipeline-alerts"
     }
     access_level = "read_only"
     rate_limits = @{
@@ -45,8 +45,8 @@ AWS_DEFAULT_REGION=ap-south-1
 AWS_PROFILE=default
 
 # Stock Data API Endpoints
-STOCK_DATA_BUCKET=stock-pipeline-mvp-dev-ohlcv-{REPLACE_WITH_ACTUAL_SUFFIX}
-SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:{REPLACE_WITH_ACCOUNT_ID}:stock-pipeline-mvp-alerts
+STOCK_DATA_BUCKET=stock-pipeline-dev-ohlcv-{REPLACE_WITH_ACTUAL_SUFFIX}
+SNS_TOPIC_ARN=arn:aws:sns:ap-south-1:{REPLACE_WITH_ACCOUNT_ID}:stock-pipeline-alerts
 
 # Team Configuration
 TEAM_NAME=$TeamName
@@ -142,8 +142,8 @@ $iamPolicy = @{
                 "s3:ListBucket"
             )
             Resource = @(
-                "arn:aws:s3:::stock-pipeline-mvp-dev-ohlcv-*",
-                "arn:aws:s3:::stock-pipeline-mvp-dev-ohlcv-*/*"
+                "arn:aws:s3:::stock-pipeline-dev-ohlcv-*",
+                "arn:aws:s3:::stock-pipeline-dev-ohlcv-*/*"
             )
         },
         @{
@@ -154,7 +154,7 @@ $iamPolicy = @{
                 "sns:Unsubscribe",
                 "sns:ListSubscriptions"
             )
-            Resource = "arn:aws:sns:ap-south-1:*:stock-pipeline-mvp-alerts"
+            Resource = "arn:aws:sns:ap-south-1:*:stock-pipeline-alerts"
         }
     )
 } | ConvertTo-Json -Depth 4

@@ -156,7 +156,7 @@ function Test-FileStructure {
     Write-Header "Checking File Structure"
     
     $requiredFiles = @(
-        'infra\main-mvp.tf',
+    'infra\main-mvp.tf',
         'deployment\deploy-mvp.ps1',
         'deployment\deploy-mvp.sh',
         'ingestion\lambda_ingestion.py',
@@ -205,9 +205,9 @@ function Get-DeploymentConfig {
     Write-Success "AWS Region: $region"
     
     # Get project name
-    $project = Read-Host "Enter project name [stock-pipeline-mvp]"
-    if (-not $project) {
-        $project = "stock-pipeline-mvp"
+        $project = Read-Host "Enter project name [stock-pipeline]"
+        if (-not $project) {
+            $project = "stock-pipeline"
     }
     $config.Project = $project
     Write-Success "Project name: $project"
@@ -310,7 +310,7 @@ function Main {
     }
     else {
         $checksPasssed++  # Skip region check in non-interactive mode
-        $config = @{ Email = "test@example.com"; Region = "ap-south-1"; Project = "stock-pipeline-mvp" }
+    $config = @{ Email = "test@example.com"; Region = "ap-south-1"; Project = "stock-pipeline" }
     }
     
     # Show cost estimates

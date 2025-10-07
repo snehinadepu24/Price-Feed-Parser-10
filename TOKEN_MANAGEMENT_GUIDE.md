@@ -11,13 +11,13 @@ Your system now implements **automatic token rotation** eliminating the need for
 ```bash
 # You only need to set these ONCE
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/client_id" \
+  --name "/stock-pipeline/fyers/client_id" \
   --value "your-fyers-client-id" \
   --type "SecureString" \
   --overwrite
 
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --name "/stock-pipeline/fyers/refresh_token" \
   --value "your-fyers-refresh-token" \
   --type "SecureString" \
   --overwrite
@@ -52,18 +52,18 @@ def get_fyers_credentials_from_ssm():
 ```hcl
 # Long-lived credentials (set once)
 resource "aws_ssm_parameter" "fyers_refresh_token" {
-  name = "/stock-pipeline-mvp/fyers/refresh_token"
+  name = "/stock-pipeline/fyers/refresh_token"
   type = "SecureString"
 }
 
 resource "aws_ssm_parameter" "fyers_client_id" {
-  name = "/stock-pipeline-mvp/fyers/client_id"  
+  name = "/stock-pipeline/fyers/client_id"  
   type = "SecureString"
 }
 
 # Auto-managed token (Lambda updates this)
 resource "aws_ssm_parameter" "fyers_access_token" {
-  name = "/stock-pipeline-mvp/fyers/access_token"
+  name = "/stock-pipeline/fyers/access_token"
   type = "SecureString"
   value = "AUTO_GENERATED"  # Lambda will populate
 }
@@ -80,7 +80,7 @@ resource "aws_ssm_parameter" "fyers_access_token" {
     "ssm:PutParameter"  # ← Added for token storage
   ],
   "Resource": [
-    "arn:aws:ssm:*:*:parameter/stock-pipeline-mvp/fyers/*"
+  "arn:aws:ssm:*:*:parameter/stock-pipeline/fyers/*"
   ]
 }
 ```
@@ -97,13 +97,13 @@ terraform apply -var="notification_email=your-email@example.com"
 ```bash
 # Get these from your Fyers app registration
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/client_id" \
+  --name "/stock-pipeline/fyers/client_id" \
   --value "YOUR_ACTUAL_CLIENT_ID" \
   --type "SecureString" \
   --overwrite
 
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --name "/stock-pipeline/fyers/refresh_token" \
   --value "YOUR_ACTUAL_REFRESH_TOKEN" \
   --type "SecureString" \
   --overwrite
@@ -113,13 +113,13 @@ aws ssm put-parameter \
 ```bash
 # Invoke Lambda manually to test
 aws lambda invoke \
-  --function-name stock-pipeline-mvp-ingestion \
+  --function-name stock-pipeline-ingestion \
   --payload '{}' \
   response.json
 
 # Check CloudWatch logs for token refresh messages
 aws logs filter-log-events \
-  --log-group-name "/aws/lambda/stock-pipeline-mvp-ingestion" \
+  --log-group-name "/aws/lambda/stock-pipeline-ingestion" \
   --start-time $(date -d '5 minutes ago' +%s)000
 ```
 
@@ -162,22 +162,22 @@ aws logs filter-log-events \
 ```bash
 # View current stored credentials (values are encrypted)
 aws ssm get-parameters \
-  --names "/stock-pipeline-mvp/fyers/refresh_token" \
-          "/stock-pipeline-mvp/fyers/client_id" \
-          "/stock-pipeline-mvp/fyers/access_token" \
+  --names "/stock-pipeline/fyers/refresh_token" \
+    "/stock-pipeline/fyers/client_id" \
+    "/stock-pipeline/fyers/access_token" \
   --with-decryption
 ```
 
 ### Monitor Lambda Logs
 ```bash
 # Real-time log monitoring
-aws logs tail /aws/lambda/stock-pipeline-mvp-ingestion --follow
+aws logs tail /aws/lambda/stock-pipeline-ingestion --follow
 ```
 
 ### Test Token Refresh Manually
 ```bash
 # Force token refresh by removing cached access token
-aws ssm delete-parameter --name "/stock-pipeline-mvp/fyers/access_token"
+aws ssm delete-parameter --name "/stock-pipeline/fyers/access_token"
 
 # Next Lambda execution will generate new token
 ```
@@ -188,7 +188,7 @@ aws ssm delete-parameter --name "/stock-pipeline-mvp/fyers/access_token"
 **Solution**: Update refresh token in SSM
 ```bash
 aws ssm put-parameter \
-  --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --name "/stock-pipeline/fyers/refresh_token" \
   --value "NEW_REFRESH_TOKEN" \
   --type "SecureString" \
   --overwrite

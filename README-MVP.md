@@ -78,19 +78,19 @@ After deployment, update your Fyers API credentials in AWS SSM Parameter Store (
 ```bash
 # Set Fyers API credentials in SSM Parameter Store
 aws ssm put-parameter \
-    --name "/stock-pipeline-mvp/fyers/access_token" \
+  --name "/stock-pipeline/fyers/access_token" \
     --value "YOUR_ACCESS_TOKEN" \
     --type "SecureString" \
     --overwrite
 
 aws ssm put-parameter \
-    --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --name "/stock-pipeline/fyers/refresh_token" \
     --value "YOUR_REFRESH_TOKEN" \
     --type "SecureString" \
     --overwrite
 
 aws ssm put-parameter \
-    --name "/stock-pipeline-mvp/fyers/client_id" \
+  --name "/stock-pipeline/fyers/client_id" \
     --value "YOUR_CLIENT_ID" \
     --type "SecureString" \
     --overwrite
@@ -149,7 +149,7 @@ NOTIFICATION_EMAIL="your-email@example.com"
 
 # Optional
 AWS_REGION="ap-south-1"
-PROJECT_NAME="stock-pipeline-mvp"
+PROJECT_NAME="stock-pipeline"
 ```
 
 ### Terraform Variables
@@ -164,7 +164,7 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  default = "stock-pipeline-mvp"
+  default = "stock-pipeline"
 }
 ```
 
@@ -182,7 +182,7 @@ https://s3.console.aws.amazon.com/s3/buckets/YOUR_BUCKET_NAME
 
 ### Lambda Function Logs
 ```
-https://console.aws.amazon.com/lambda/home?region=ap-south-1#/functions/stock-pipeline-mvp-ingestion
+https://console.aws.amazon.com/lambda/home?region=ap-south-1#/functions/stock-pipeline-ingestion
 ```
 
 ## 🚀 Scaling to Production
@@ -228,7 +228,7 @@ resource "aws_athena_workgroup" "ohlcv" {
 **1. Lambda Timeout**
 ```bash
 # Check CloudWatch logs
-aws logs tail /aws/lambda/stock-pipeline-mvp-ingestion --follow
+aws logs tail /aws/lambda/stock-pipeline-ingestion --follow
 ```
 
 **2. API Rate Limits**
@@ -238,8 +238,8 @@ aws logs tail /aws/lambda/stock-pipeline-mvp-ingestion --follow
 
 **3. S3 Access Issues**
 ```bash
-# Verify bucket permissions
-aws s3 ls s3://your-bucket-name/
+variable "project_name" {
+  default = "stock-pipeline"
 ```
 
 **4. Cost Overruns**
@@ -250,24 +250,24 @@ aws s3 ls s3://your-bucket-name/
 ### Debug Commands
 ```bash
 # Test Lambda function
-aws lambda invoke --function-name stock-pipeline-mvp-ingestion test-output.json
+aws lambda invoke --function-name stock-pipeline-ingestion test-output.json
 
 # Check S3 data
-aws s3 ls s3://your-bucket-name/mvp-raw/ --recursive
+aws s3 ls s3://your-bucket-name/Raw data/Prices/ --recursive
 
 # View recent logs
-aws logs filter-log-events --log-group-name /aws/lambda/stock-pipeline-mvp-ingestion --start-time $(date -d '1 hour ago' +%s)000
+aws logs filter-log-events --log-group-name /aws/lambda/stock-pipeline-ingestion --start-time $(date -d '1 hour ago' +%s)000
 ```
 
 ## 📋 File Structure
 
-```
+aws lambda invoke --function-name stock-pipeline-ingestion test-output.json
 Price Feed Parser/
 ├── infra/
 │   ├── main.tf              # Full production infrastructure
 │   ├── main-mvp.tf          # MVP infrastructure (Free Tier)
 │   └── monitoring.tf        # CloudWatch dashboards
-├── ingestion/
+aws logs filter-log-events --log-group-name /aws/lambda/stock-pipeline-ingestion --start-time $(date -d '1 hour ago' +%s)000
 │   ├── ingestion.py         # Full ECS-based ingestion
 │   ├── lambda_ingestion.py  # MVP Lambda ingestion
 │   └── requirements.txt     # Python dependencies

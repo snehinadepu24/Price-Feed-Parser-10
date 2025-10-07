@@ -1,22 +1,10 @@
 # MVP Configuration for AWS Free Tier
-# This file contains only free tier services for demonstrating the MVP
-# Expensive services are commented out but preserved for future use
+# This file provisions the lean pipeline: data lake bucket, ingestion Lambda,
+# EventBridge schedule, SNS alerts, SSM credentials, and the interactive token UI.
 
 terraform {
   required_version = ">= 1.0"
-  
-  # Note: For MVP, you might want to use local state instead of S3 backend
-  # Comment out the backend block below and use local state for development
-  /*
-  backend "s3" {
-    bucket         = "stock-pipeline-terraform-state"
-    key            = "stock-pipeline/terraform.tfstate"
-    region         = "ap-south-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
-  }
-  */
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -37,7 +25,9 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Variables
+# -----------------------------------------------------------------------------
+# Variables & Locals
+# -----------------------------------------------------------------------------
 variable "aws_region" {
   description = "AWS region"
   type        = string
@@ -47,7 +37,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "stock-pipeline-mvp"
+  default     = "stock-pipeline"
 }
 
 variable "environment" {
@@ -61,7 +51,6 @@ variable "notification_email" {
   type        = string
 }
 
-# Local values
 locals {
   common_tags = {
     Project     = var.project_name
@@ -69,11 +58,10 @@ locals {
     ManagedBy   = "terraform"
     CostCenter  = "MVP"
   }
-  
+
   bucket_name = "${var.project_name}-${var.environment}-ohlcv"
 }
 
-# Data sources
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -81,22 +69,21 @@ resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
-#===============================================================================
-# FREE TIER SERVICES - ACTIVE FOR MVP
-#===============================================================================
-
-# S3 Bucket for data storage (Free: 5GB storage, 20,000 GET requests, 2,000 PUT requests)
+# -----------------------------------------------------------------------------
+# S3 Data Lake
+# -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "ohlcv_data" {
   bucket = "${local.bucket_name}-${random_id.bucket_suffix.hex}"
 
   tags = merge(local.common_tags, {
-    Name = "OHLCV Data Lake - MVP"
+    Name     = "OHLCV Data Lake"
     FreeTier = "Yes"
   })
 }
 
 resource "aws_s3_bucket_versioning" "ohlcv_data" {
   bucket = aws_s3_bucket.ohlcv_data.id
+
   versioning_configuration {
     status = "Enabled"
   }
@@ -112,34 +99,35 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "ohlcv_data" {
   }
 }
 
-# Simplified lifecycle for MVP (keep data longer to avoid frequent transitions)
 resource "aws_s3_bucket_lifecycle_configuration" "ohlcv_data" {
   bucket = aws_s3_bucket.ohlcv_data.id
 
   rule {
-    id     = "mvp_lifecycle"
+    id     = "standard-retention"
     status = "Enabled"
 
     filter {
       prefix = ""
     }
 
-    # Keep data in standard storage longer for MVP
     transition {
-      days          = 30
+      days          = 45
       storage_class = "STANDARD_IA"
     }
 
     expiration {
-      days = 90  # Shorter retention for MVP
+      days = 120
     }
   }
 
-  # Cleanup incomplete multipart uploads
   rule {
-    id     = "cleanup_incomplete_uploads"
+    id     = "cleanup-incomplete"
     status = "Enabled"
 
+    # Provide an explicit filter to satisfy provider requirement that each rule
+    # must have either a `filter` or `prefix` attribute. We scope this rule to
+    # the root of the bucket (empty prefix) so it applies to multipart uploads
+    # for all objects.
     filter {
       prefix = ""
     }
@@ -150,7 +138,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "ohlcv_data" {
   }
 }
 
-# SNS Topic for notifications (Free: 1,000 notifications per month)
+# Folder placeholders keep S3 prefixes visible in console
+resource "aws_s3_object" "raw_placeholder" {
+  bucket  = aws_s3_bucket.ohlcv_data.id
+  key     = "raw/ohlcv/2025-01-01/.keep"
+  content = ""
+}
+
+resource "aws_s3_object" "analytics_placeholder" {
+  bucket  = aws_s3_bucket.ohlcv_data.id
+  key     = "analytics/ohlcv/.keep"
+  content = ""
+}
+
+# -----------------------------------------------------------------------------
+# Notifications & Credentials
+# -----------------------------------------------------------------------------
 resource "aws_sns_topic" "alerts" {
   name = "${var.project_name}-alerts"
 
@@ -165,20 +168,15 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = var.notification_email
 }
 
-# SSM Parameter Store for API credentials (Free for standard parameters)
-# NOTE: We only store long-lived credentials (client_id, refresh_token)
-# Access tokens are generated automatically by Lambda and cached temporarily
-
 resource "aws_ssm_parameter" "fyers_refresh_token" {
   name        = "/${var.project_name}/fyers/refresh_token"
-  description = "Fyers API refresh token (long-lived, used to generate daily access tokens)"
+  description = "Fyers API refresh token"
   type        = "SecureString"
   value       = "CHANGE_ME"
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
     Purpose  = "API_Credentials"
-    TokenType = "LongLived"
   })
 
   lifecycle {
@@ -204,14 +202,13 @@ resource "aws_ssm_parameter" "fyers_client_id" {
 
 resource "aws_ssm_parameter" "fyers_app_secret" {
   name        = "/${var.project_name}/fyers/app_secret"
-  description = "Fyers API app secret (required for appIdHash generation)"
+  description = "Fyers API app secret"
   type        = "SecureString"
   value       = "CHANGE_ME"
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
     Purpose  = "API_Credentials"
-    TokenType = "LongLived"
   })
 
   lifecycle {
@@ -219,17 +216,15 @@ resource "aws_ssm_parameter" "fyers_app_secret" {
   }
 }
 
-# Optional: PIN for Fyers API (some operations may require it)
 resource "aws_ssm_parameter" "fyers_pin" {
   name        = "/${var.project_name}/fyers/pin"
-  description = "Fyers API PIN (optional, required for some token refresh operations)"
+  description = "Fyers API PIN (optional)"
   type        = "SecureString"
   value       = "CHANGE_ME"
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
     Purpose  = "API_Credentials"
-    TokenType = "Optional"
   })
 
   lifecycle {
@@ -237,17 +232,15 @@ resource "aws_ssm_parameter" "fyers_pin" {
   }
 }
 
-# Optional: Access token storage for caching (will be auto-populated by Lambda)
 resource "aws_ssm_parameter" "fyers_access_token" {
   name        = "/${var.project_name}/fyers/access_token"
-  description = "Fyers API access token (auto-refreshed daily by Lambda)"
+  description = "Fyers API access token (auto-populated by Lambda)"
   type        = "SecureString"
   value       = "AUTO_GENERATED"
 
   tags = merge(local.common_tags, {
-    FreeTier = "Yes"
-    Purpose  = "API_Credentials"
-    TokenType = "ShortLived"
+    FreeTier    = "Yes"
+    Purpose     = "API_Credentials"
     AutoManaged = "Yes"
   })
 
@@ -256,123 +249,31 @@ resource "aws_ssm_parameter" "fyers_access_token" {
   }
 }
 
-# Demo mode parameter for MVP demonstrations
-resource "aws_ssm_parameter" "demo_mode" {
-  name        = "/${var.project_name}/demo_mode"
-  description = "Enable demo mode to bypass trading hours and use demo data"
-  type        = "String"
-  value       = "false"
-
-  tags = merge(local.common_tags, {
-    FreeTier = "Yes"
-    Purpose  = "Demo_Configuration"
-    Usage    = "MVP_Demo"
-  })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-# CloudWatch Log Groups (Free: 5GB data ingestion, 5GB storage)
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
 resource "aws_cloudwatch_log_group" "lambda_logs" {
   name              = "/aws/lambda/${var.project_name}-ingestion"
-  retention_in_days = 7  # Keep short for MVP
+  retention_in_days = 7
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
   })
 }
 
-# Lambda function for data ingestion (Free: 1M requests, 400,000 GB-seconds per month)
-resource "aws_lambda_function" "data_ingestion" {
-  filename         = "../deployment/lambda_ingestion.zip"
-  function_name    = "${var.project_name}-ingestion"
-  role            = aws_iam_role.lambda_execution.arn
-  handler         = "lambda_ingestion.lambda_handler"
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 300  # 5 minutes max for free tier
-
-  environment {
-    variables = {
-      S3_BUCKET_NAME              = aws_s3_bucket.ohlcv_data.id
-      FYERS_ACCESS_TOKEN_PARAM    = aws_ssm_parameter.fyers_access_token.name
-      FYERS_REFRESH_TOKEN_PARAM   = aws_ssm_parameter.fyers_refresh_token.name
-      FYERS_CLIENT_ID_PARAM       = aws_ssm_parameter.fyers_client_id.name
-      FYERS_APP_SECRET_PARAM      = aws_ssm_parameter.fyers_app_secret.name
-      FYERS_PIN_PARAM             = aws_ssm_parameter.fyers_pin.name
-      SNS_TOPIC_ARN               = aws_sns_topic.alerts.arn
-      PROJECT_NAME                = var.project_name
-      ENVIRONMENT                 = var.environment
-      ENABLE_TRADING_HOURS_CHECK  = "true"  # Set to "false" to run 24/7 for testing
-    }
-  }
-
-  depends_on = [
-    null_resource.lambda_dependencies,
-    data.archive_file.lambda_zip
-  ]
+resource "aws_cloudwatch_log_group" "etl_logs" {
+  name              = "/aws/lambda/${var.project_name}-etl"
+  retention_in_days = 7
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
+    Purpose  = "ETL"
   })
 }
 
-# Token Generator Lambda Function (AWS-hosted UI backend)
-resource "aws_lambda_function" "token_generator" {
-  filename         = "../deployment/token_generator.zip"
-  function_name    = "${var.project_name}-token-generator"
-  role            = aws_iam_role.lambda_execution.arn
-  handler         = "lambda_function.lambda_handler"
-  source_code_hash = data.archive_file.token_generator_zip.output_base64sha256
-  runtime         = "python3.11"
-  timeout         = 30
-
-  environment {
-    variables = {
-      FYERS_ACCESS_TOKEN_PARAM  = aws_ssm_parameter.fyers_access_token.name
-      FYERS_REFRESH_TOKEN_PARAM = aws_ssm_parameter.fyers_refresh_token.name
-      FYERS_CLIENT_ID_PARAM     = aws_ssm_parameter.fyers_client_id.name
-      FYERS_APP_SECRET_PARAM    = aws_ssm_parameter.fyers_app_secret.name
-      PROJECT_NAME              = var.project_name
-      CORS_ORIGIN               = "*"  # Allow all origins for simplicity
-    }
-  }
-
-  depends_on = [
-    null_resource.token_generator_dependencies,
-    data.archive_file.token_generator_zip
-  ]
-
-  tags = merge(local.common_tags, {
-    FreeTier = "Yes"
-    Purpose  = "TokenGenerator"
-  })
-}
-
-# Package Lambda function with dependencies
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  output_path = "../deployment/lambda_ingestion.zip"
-  
-  # Just reference the zip file created by null_resource
-  source_dir = "../deployment/lambda_package"
-  
-  depends_on = [null_resource.lambda_dependencies]
-}
-
-# Package Token Generator Lambda
-data "archive_file" "token_generator_zip" {
-  type        = "zip"
-  output_path = "../deployment/token_generator.zip"
-  
-  source_dir = "../deployment/token_generator_package"
-  
-  depends_on = [null_resource.token_generator_dependencies]
-}
-
-# Install dependencies locally and package them
+# -----------------------------------------------------------------------------
+# Lambda Packaging Helpers
+# -----------------------------------------------------------------------------
 resource "null_resource" "lambda_dependencies" {
   triggers = {
     requirements = filemd5("../ingestion/requirements.txt")
@@ -388,13 +289,48 @@ resource "null_resource" "lambda_dependencies" {
       if (Test-Path "../deployment/lambda_ingestion.zip") { Remove-Item "../deployment/lambda_ingestion.zip" -Force }
       Compress-Archive -Path "../deployment/lambda_package/*" -DestinationPath "../deployment/lambda_ingestion.zip"
     EOT
-    
+
     interpreter = ["powershell", "-Command"]
     working_dir = path.module
   }
 }
 
-# Package Token Generator dependencies
+# Lightweight ETL Lambda packaging (no external dependencies)
+resource "null_resource" "etl_lambda_packaging" {
+  triggers = {
+    etl_code = filemd5("../etl/lightweight_etl.py")
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      if (Test-Path "../deployment/etl_package") { Remove-Item "../deployment/etl_package" -Recurse -Force }
+      New-Item -ItemType Directory -Path "../deployment/etl_package" -Force
+      Copy-Item "../etl/lightweight_etl.py" "../deployment/etl_package/"
+      if (Test-Path "../deployment/lightweight_etl.zip") { Remove-Item "../deployment/lightweight_etl.zip" -Force }
+      Compress-Archive -Path "../deployment/etl_package/*" -DestinationPath "../deployment/lightweight_etl.zip"
+    EOT
+
+    interpreter = ["powershell", "-Command"]
+    working_dir = path.module
+  }
+}
+
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  output_path = "../deployment/lambda_ingestion.zip"
+  source_dir  = "../deployment/lambda_package"
+
+  depends_on = [null_resource.lambda_dependencies]
+}
+
+data "archive_file" "etl_lambda_zip" {
+  type        = "zip"
+  output_path = "../deployment/lightweight_etl.zip"
+  source_dir  = "../deployment/etl_package"
+
+  depends_on = [null_resource.etl_lambda_packaging]
+}
+
 resource "null_resource" "token_generator_dependencies" {
   triggers = {
     requirements = filemd5("../aws-token-generator/requirements.txt")
@@ -410,17 +346,127 @@ resource "null_resource" "token_generator_dependencies" {
       if (Test-Path "../deployment/token_generator.zip") { Remove-Item "../deployment/token_generator.zip" -Force }
       Compress-Archive -Path "../deployment/token_generator_package/*" -DestinationPath "../deployment/token_generator.zip"
     EOT
-    
+
     interpreter = ["powershell", "-Command"]
     working_dir = path.module
   }
 }
 
-# EventBridge rule for scheduled execution (Free: All state changes and scheduled events)
+data "archive_file" "token_generator_zip" {
+  type        = "zip"
+  output_path = "../deployment/token_generator.zip"
+  source_dir  = "../deployment/token_generator_package"
+
+  depends_on = [null_resource.token_generator_dependencies]
+}
+
+# -----------------------------------------------------------------------------
+# Lambda Functions
+# -----------------------------------------------------------------------------
+resource "aws_lambda_function" "data_ingestion" {
+  filename         = "../deployment/lambda_ingestion.zip"
+  function_name    = "${var.project_name}-ingestion"
+  role             = aws_iam_role.lambda_execution.arn
+  handler          = "lambda_ingestion.lambda_handler"
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  runtime          = "python3.11"
+  timeout          = 300
+
+  environment {
+    variables = {
+      S3_BUCKET_NAME            = aws_s3_bucket.ohlcv_data.id
+      SNS_TOPIC_ARN             = aws_sns_topic.alerts.arn
+      FYERS_ACCESS_TOKEN_PARAM  = aws_ssm_parameter.fyers_access_token.name
+      FYERS_REFRESH_TOKEN_PARAM = aws_ssm_parameter.fyers_refresh_token.name
+      FYERS_CLIENT_ID_PARAM     = aws_ssm_parameter.fyers_client_id.name
+      FYERS_APP_SECRET_PARAM    = aws_ssm_parameter.fyers_app_secret.name
+      FYERS_PIN_PARAM           = aws_ssm_parameter.fyers_pin.name
+      PROJECT_NAME              = var.project_name
+      ENVIRONMENT               = var.environment
+      ENABLE_TRADING_HOURS_CHECK = "true"
+    }
+  }
+
+  depends_on = [
+    null_resource.lambda_dependencies,
+    data.archive_file.lambda_zip,
+    aws_cloudwatch_log_group.lambda_logs
+  ]
+
+  tags = merge(local.common_tags, {
+    FreeTier = "Yes"
+  })
+}
+
+resource "aws_lambda_function" "lightweight_etl" {
+  filename         = "../deployment/lightweight_etl.zip"
+  function_name    = "${var.project_name}-etl"
+  role             = aws_iam_role.lambda_execution.arn
+  handler          = "lightweight_etl.lambda_handler"
+  source_code_hash = data.archive_file.etl_lambda_zip.output_base64sha256
+  runtime          = "python3.11"
+  timeout          = 600  # 10 minutes for ETL processing
+  memory_size      = 512  # More memory for processing
+
+  environment {
+    variables = {
+      S3_BUCKET_NAME = aws_s3_bucket.ohlcv_data.id
+      SNS_TOPIC_ARN  = aws_sns_topic.alerts.arn
+      PROJECT_NAME   = var.project_name
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  depends_on = [
+    null_resource.etl_lambda_packaging,
+    data.archive_file.etl_lambda_zip,
+    aws_cloudwatch_log_group.etl_logs
+  ]
+
+  tags = merge(local.common_tags, {
+    FreeTier = "Yes"
+    Purpose  = "ETL"
+  })
+}
+
+resource "aws_lambda_function" "token_generator" {
+  filename         = "../deployment/token_generator.zip"
+  function_name    = "${var.project_name}-token-generator"
+  role             = aws_iam_role.lambda_execution.arn
+  handler          = "lambda_function.lambda_handler"
+  source_code_hash = data.archive_file.token_generator_zip.output_base64sha256
+  runtime          = "python3.11"
+  timeout          = 30
+
+  environment {
+    variables = {
+      FYERS_ACCESS_TOKEN_PARAM  = aws_ssm_parameter.fyers_access_token.name
+      FYERS_REFRESH_TOKEN_PARAM = aws_ssm_parameter.fyers_refresh_token.name
+      FYERS_CLIENT_ID_PARAM     = aws_ssm_parameter.fyers_client_id.name
+      FYERS_APP_SECRET_PARAM    = aws_ssm_parameter.fyers_app_secret.name
+      PROJECT_NAME              = var.project_name
+      CORS_ORIGIN               = "*"
+    }
+  }
+
+  depends_on = [
+    null_resource.token_generator_dependencies,
+    data.archive_file.token_generator_zip
+  ]
+
+  tags = merge(local.common_tags, {
+    FreeTier = "Yes"
+    Purpose  = "TokenGenerator"
+  })
+}
+
+# -----------------------------------------------------------------------------
+# Scheduling
+# -----------------------------------------------------------------------------
 resource "aws_cloudwatch_event_rule" "ingestion_schedule" {
   name                = "${var.project_name}-ingestion-schedule"
   description         = "Trigger data ingestion every 5 minutes during trading hours"
-  schedule_expression = "cron(0/5 3-10 ? * MON-FRI *)"  # Every 5 min, 3:00-10:59 AM UTC, Mon-Fri (8:30 AM - 4:29 PM IST)
+  schedule_expression = "cron(0/5 3-10 ? * MON-FRI *)"
 
   tags = merge(local.common_tags, {
     FreeTier = "Yes"
@@ -441,11 +487,9 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.ingestion_schedule.arn
 }
 
-#===============================================================================
-# API GATEWAY FOR TOKEN GENERATOR UI (FREE TIER)
-#===============================================================================
-
-# API Gateway for Token Generator
+# -----------------------------------------------------------------------------
+# Token Generator API Gateway
+# -----------------------------------------------------------------------------
 resource "aws_api_gateway_rest_api" "token_generator" {
   name        = "${var.project_name}-token-generator"
   description = "API for Fyers Token Generator Web UI"
@@ -460,7 +504,6 @@ resource "aws_api_gateway_rest_api" "token_generator" {
   })
 }
 
-# CORS configuration for API Gateway
 resource "aws_api_gateway_method" "token_generator_options" {
   rest_api_id   = aws_api_gateway_rest_api.token_generator.id
   resource_id   = aws_api_gateway_rest_api.token_generator.root_resource_id
@@ -505,7 +548,6 @@ resource "aws_api_gateway_integration_response" "token_generator_options" {
   }
 }
 
-# Main API methods
 resource "aws_api_gateway_method" "token_generator_get" {
   rest_api_id   = aws_api_gateway_rest_api.token_generator.id
   resource_id   = aws_api_gateway_rest_api.token_generator.root_resource_id
@@ -520,28 +562,24 @@ resource "aws_api_gateway_method" "token_generator_post" {
   authorization = "NONE"
 }
 
-# Lambda integrations
 resource "aws_api_gateway_integration" "token_generator_get" {
-  rest_api_id = aws_api_gateway_rest_api.token_generator.id
-  resource_id = aws_api_gateway_rest_api.token_generator.root_resource_id
-  http_method = aws_api_gateway_method.token_generator_get.http_method
-
+  rest_api_id             = aws_api_gateway_rest_api.token_generator.id
+  resource_id             = aws_api_gateway_rest_api.token_generator.root_resource_id
+  http_method             = aws_api_gateway_method.token_generator_get.http_method
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.token_generator.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.token_generator.invoke_arn
 }
 
 resource "aws_api_gateway_integration" "token_generator_post" {
-  rest_api_id = aws_api_gateway_rest_api.token_generator.id
-  resource_id = aws_api_gateway_rest_api.token_generator.root_resource_id
-  http_method = aws_api_gateway_method.token_generator_post.http_method
-
+  rest_api_id             = aws_api_gateway_rest_api.token_generator.id
+  resource_id             = aws_api_gateway_rest_api.token_generator.root_resource_id
+  http_method             = aws_api_gateway_method.token_generator_post.http_method
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.token_generator.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.token_generator.invoke_arn
 }
 
-# Lambda permissions for API Gateway
 resource "aws_lambda_permission" "token_generator_api" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
@@ -550,7 +588,6 @@ resource "aws_lambda_permission" "token_generator_api" {
   source_arn    = "${aws_api_gateway_rest_api.token_generator.execution_arn}/*/*"
 }
 
-# API Gateway deployment
 resource "aws_api_gateway_deployment" "token_generator" {
   depends_on = [
     aws_api_gateway_integration.token_generator_get,
@@ -559,14 +596,33 @@ resource "aws_api_gateway_deployment" "token_generator" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.token_generator.id
-  stage_name  = "prod"
+  # `stage_name` is deprecated; stage is managed separately via
+  # aws_api_gateway_stage.token_generator.
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Explicit stage resource for the token generator API. Managing the stage as a
+# separate resource avoids the provider deprecation warning and gives us a
+# stable place to attach stage-level settings in future.
+resource "aws_api_gateway_stage" "token_generator" {
+  deployment_id = aws_api_gateway_deployment.token_generator.id
+  rest_api_id   = aws_api_gateway_rest_api.token_generator.id
+  stage_name    = "prod"
+
+  tags = merge(local.common_tags, {
+    Stage = "prod"
+  })
 
   lifecycle {
     create_before_destroy = true
   }
 }
 
-# IAM Role for Lambda (Free)
+# -----------------------------------------------------------------------------
+# IAM
+# -----------------------------------------------------------------------------
 resource "aws_iam_role" "lambda_execution" {
   name = "${var.project_name}-lambda-execution-role"
 
@@ -599,397 +655,50 @@ resource "aws_iam_role_policy" "lambda_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket"
-        ]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
         Resource = [
           aws_s3_bucket.ohlcv_data.arn,
           "${aws_s3_bucket.ohlcv_data.arn}/*"
         ]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameter",
-          "ssm:GetParameters",
-          "ssm:PutParameter"
-        ]
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:PutParameter"]
         Resource = [
           aws_ssm_parameter.fyers_access_token.arn,
           aws_ssm_parameter.fyers_refresh_token.arn,
           aws_ssm_parameter.fyers_client_id.arn,
           aws_ssm_parameter.fyers_app_secret.arn,
-          aws_ssm_parameter.fyers_pin.arn,
-          aws_ssm_parameter.demo_mode.arn
+          aws_ssm_parameter.fyers_pin.arn
         ]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "sns:Publish"
-        ]
-        Resource = [
-          aws_sns_topic.alerts.arn
-        ]
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = [aws_sns_topic.alerts.arn]
       },
       {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "arn:aws:logs:*:*:*"
       }
     ]
   })
 }
 
-#===============================================================================
-# COMMENTED OUT SERVICES - EXPENSIVE/NOT FREE TIER
-# Uncomment these when ready to scale beyond MVP
-#===============================================================================
-
-/*
-# RDS PostgreSQL - NOT FREE TIER ($15-20/month minimum)
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-vpc"
-  })
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-igw"
-  })
-}
-
-resource "aws_subnet" "public" {
-  count = 2
-
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.${count.index + 1}.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = true
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-public-${count.index + 1}"
-  })
-}
-
-resource "aws_subnet" "private" {
-  count = 2
-
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.${count.index + 10}.0/24"
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-private-${count.index + 1}"
-  })
-}
-
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet-group"
-  subnet_ids = aws_subnet.private[*].id
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-db-subnet-group"
-  })
-}
-
-resource "aws_security_group" "rds" {
-  name_prefix = "${var.project_name}-rds-"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-rds-sg"
-  })
-}
-
-resource "aws_db_instance" "postgres" {
-  identifier = "${var.project_name}-postgres"
-
-  allocated_storage     = 20
-  storage_type          = "gp3"
-  storage_encrypted     = true
-  
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.t3.micro"
-  
-  db_name  = "stockdata"
-  username = "stockuser"
-  password = random_password.rds_password.result
-  
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  
-  backup_retention_period = 3
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
-  
-  skip_final_snapshot = true
-  deletion_protection = false
-
-  tags = merge(local.common_tags, {
-    Name = "${var.project_name}-postgres"
-    Service = "RDS"
-    Cost = "HIGH"
-  })
-}
-
-resource "random_password" "rds_password" {
-  length  = 16
-  special = true
-}
-
-resource "aws_secretsmanager_secret" "rds_credentials" {
-  name                    = "${var.project_name}-rds-credentials"
-  description             = "RDS PostgreSQL credentials"
-  recovery_window_in_days = 7
-
-  tags = local.common_tags
-}
-
-resource "aws_secretsmanager_secret_version" "rds_credentials" {
-  secret_id = aws_secretsmanager_secret.rds_credentials.id
-  secret_string = jsonencode({
-    host     = aws_db_instance.postgres.address
-    port     = aws_db_instance.postgres.port
-    dbname   = aws_db_instance.postgres.db_name
-    username = aws_db_instance.postgres.username
-    password = aws_db_instance.postgres.password
-  })
-}
-*/
-
-/*
-# ECS Fargate - NOT FREE TIER ($20-50/month minimum)
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster"
-
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "ECS"
-    Cost = "HIGH"
-  })
-}
-
-resource "aws_ecs_task_definition" "ingestion" {
-  family                   = "${var.project_name}-ingestion"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = "1024"
-  memory                   = "2048"
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
-
-  container_definitions = jsonencode([
-    {
-      name  = "ingestion"
-      image = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com/${aws_ecr_repository.ingestion.name}:latest"
-      
-      essential = true
-      
-      environment = [
-        {
-          name  = "S3_BUCKET_NAME"
-          value = aws_s3_bucket.ohlcv_data.id
-        },
-        {
-          name  = "FYERS_SECRET_NAME"
-          value = aws_secretsmanager_secret.fyers_credentials.name
-        },
-        {
-          name  = "SNS_TOPIC_ARN"
-          value = aws_sns_topic.alerts.arn
-        }
-      ]
-      
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.ecs_ingestion.name
-          "awslogs-region"        = data.aws_region.current.name
-          "awslogs-stream-prefix" = "ecs"
-        }
-      }
-    }
-  ])
-
-  tags = merge(local.common_tags, {
-    Service = "ECS"
-    Cost = "HIGH"
-  })
-}
-
-resource "aws_ecr_repository" "ingestion" {
-  name                 = "${var.project_name}-ingestion"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "ECR"
-    Cost = "MEDIUM"
-  })
-}
-
-resource "aws_cloudwatch_log_group" "ecs_ingestion" {
-  name              = "/ecs/${var.project_name}-ingestion"
-  retention_in_days = 7
-
-  tags = merge(local.common_tags, {
-    Service = "ECS"
-    Cost = "MEDIUM"
-  })
-}
-*/
-
-/*
-# AWS Glue - NOT FREE TIER ($0.44/DPU-hour, minimum $5-10/month)
-resource "aws_glue_catalog_database" "ohlcv" {
-  name        = "${var.project_name}_ohlcv"
-  description = "OHLCV stock data catalog"
-
-  tags = merge(local.common_tags, {
-    Service = "Glue"
-    Cost = "HIGH"
-  })
-}
-
-resource "aws_glue_job" "etl" {
-  name         = "${var.project_name}-etl"
-  role_arn     = aws_iam_role.glue.arn
-  glue_version = "4.0"
-
-  worker_type       = "G.1X"
-  number_of_workers = 3
-  
-  execution_class = "FLEX"
-
-  command {
-    script_location = "s3://${aws_s3_bucket.glue_scripts.id}/etl/glue_job.py"
-    python_version  = "3"
-  }
-
-  default_arguments = {
-    "--job-language"                     = "python"
-    "--job-bookmark-option"              = "job-bookmark-enable"
-    "--enable-metrics"                   = "true"
-    "--enable-continuous-cloudwatch-log" = "true"
-    "--source_bucket"                    = aws_s3_bucket.ohlcv_data.id
-    "--target_bucket"                    = aws_s3_bucket.ohlcv_data.id
-    "--database_name"                    = aws_glue_catalog_database.ohlcv.name
-    "--sns_topic_arn"                    = aws_sns_topic.alerts.arn
-  }
-
-  execution_property {
-    max_concurrent_runs = 2
-  }
-
-  max_retries = 2
-  timeout     = 60
-
-  tags = merge(local.common_tags, {
-    Service = "Glue"
-    Cost = "HIGH"
-  })
-}
-
-resource "aws_s3_bucket" "glue_scripts" {
-  bucket = "${local.bucket_name}-scripts"
-
-  tags = merge(local.common_tags, {
-    Name = "Glue Scripts Bucket"
-    Service = "Glue"
-    Cost = "LOW"
-  })
-}
-*/
-
-/*
-# Athena - Free tier has limitations, paid after 10TB scanned
-resource "aws_athena_workgroup" "ohlcv" {
-  name = "${var.project_name}-ohlcv"
-
-  configuration {
-    enforce_workgroup_configuration    = true
-    publish_cloudwatch_metrics         = true
-    bytes_scanned_cutoff_per_query     = 100000000  # 100 MB limit for MVP
-    result_configuration_updates       = true
-
-    result_configuration {
-      output_location = "s3://${aws_s3_bucket.athena_results.id}/"
-
-      encryption_configuration {
-        encryption_option = "SSE_S3"
-      }
-    }
-  }
-
-  tags = merge(local.common_tags, {
-    Service = "Athena"
-    Cost = "MEDIUM"
-  })
-}
-
-resource "aws_s3_bucket" "athena_results" {
-  bucket = "${local.bucket_name}-athena-results"
-
-  tags = merge(local.common_tags, {
-    Name = "Athena Query Results"
-    Service = "Athena"
-    Cost = "LOW"
-  })
-}
-*/
-
-# Cost monitoring budget for MVP
+# -----------------------------------------------------------------------------
+# Cost Guardrail
+# -----------------------------------------------------------------------------
 resource "aws_budgets_budget" "mvp_budget" {
   name         = "${var.project_name}-mvp-budget"
   budget_type  = "COST"
-  limit_amount = "5"  # $5 monthly limit for MVP
+  limit_amount = "5"
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
-  
+
   time_period_start = "2025-01-01_00:00"
-  
+
   cost_filter {
     name   = "Service"
     values = [
@@ -1002,30 +711,29 @@ resource "aws_budgets_budget" "mvp_budget" {
 
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                 = 50   # Alert at 50% of budget ($2.50)
-    threshold_type            = "PERCENTAGE"
+    threshold                  = 50
+    threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.notification_email]
   }
 
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                 = 80   # Alert at 80% of budget ($4.00)
-    threshold_type            = "PERCENTAGE"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
     subscriber_email_addresses = [var.notification_email]
   }
 
   tags = merge(local.common_tags, {
     Purpose = "CostControl"
-    Budget = "MVP"
+    Budget  = "MVP"
   })
 }
 
-#===============================================================================
-# OUTPUTS - MVP VERSION
-#===============================================================================
-
+# -----------------------------------------------------------------------------
+# Outputs
+# -----------------------------------------------------------------------------
 output "s3_bucket_name" {
   description = "Name of the S3 bucket for OHLCV data"
   value       = aws_s3_bucket.ohlcv_data.id
@@ -1071,9 +779,9 @@ output "fyers_pin_param" {
   value       = aws_ssm_parameter.fyers_pin.name
 }
 
-output "mvp_budget_name" {
-  description = "MVP cost budget name"
-  value       = aws_budgets_budget.mvp_budget.name
+output "token_generator_url" {
+  description = "AWS-hosted Token Generator Web UI URL"
+  value       = "https://${aws_api_gateway_rest_api.token_generator.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/prod"
 }
 
 output "cloudwatch_logs_url" {
@@ -1086,51 +794,7 @@ output "s3_console_url" {
   value       = "https://s3.console.aws.amazon.com/s3/buckets/${aws_s3_bucket.ohlcv_data.id}?region=${data.aws_region.current.name}"
 }
 
-output "token_generator_url" {
-  description = "AWS-hosted Token Generator Web UI URL"
-  value       = "https://${aws_api_gateway_rest_api.token_generator.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/prod"
-}
-
-output "token_generator_api_id" {
-  description = "API Gateway ID for token generator"
-  value       = aws_api_gateway_rest_api.token_generator.id
-}
-
-# MVP Deployment Instructions
-output "mvp_deployment_instructions" {
-  description = "Instructions for deploying the MVP"
-  value = <<-EOT
-    MVP Deployment Instructions:
-    
-    1. This configuration uses only AWS Free Tier services:
-       - S3 (5GB storage, 20K GET, 2K PUT requests/month)
-       - Lambda (1M requests, 400K GB-seconds/month)
-       - SNS (1K notifications/month)
-       - CloudWatch Logs (5GB ingestion, 5GB storage/month)
-       - SSM Parameter Store (Free for standard parameters)
-    
-    2. Estimated monthly cost: $0.00 - $1.00 (completely free tier compliant)
-    
-    3. To deploy:
-       terraform init
-       terraform plan -var="notification_email=your-email@example.com"
-       terraform apply -var="notification_email=your-email@example.com"
-    
-    4. After deployment, use the AWS-hosted Token Generator UI:
-       - Open: https://{api-gateway-id}.execute-api.ap-south-1.amazonaws.com/prod
-       - Generate tokens daily using the web interface (no local scripts needed!)
-       - Tokens are automatically stored in SSM parameters
-    
-    5. Manual SSM parameter updates (if needed):
-       aws ssm put-parameter --name "/{project-name}/fyers/refresh_token" --value "your-refresh-token" --type "SecureString" --overwrite
-       aws ssm put-parameter --name "/{project-name}/fyers/client_id" --value "your-client-id" --type "SecureString" --overwrite
-    
-    5. To scale up later, uncomment the expensive services in this file:
-       - RDS PostgreSQL (for structured data storage)
-       - ECS Fargate (for containerized processing)
-       - AWS Glue (for ETL processing)
-       - Athena (for analytics)
-    
-    5. Monitor costs in AWS Billing Dashboard and set up budget alerts.
-  EOT
+output "mvp_budget_name" {
+  description = "MVP cost budget name"
+  value       = aws_budgets_budget.mvp_budget.name
 }

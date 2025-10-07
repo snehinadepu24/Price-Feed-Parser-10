@@ -30,8 +30,10 @@ resource "aws_api_gateway_deployment" "stock_data_api" {
   ]
 
   rest_api_id = aws_api_gateway_rest_api.stock_data_api.id
-  stage_name  = var.environment
-
+  # `stage_name` is deprecated in the provider. Deployment targets are managed
+  # via a separate aws_api_gateway_stage resource. Keep the variables metadata
+  # but do not set a stage_name here to avoid the deprecation warning and
+  # potential unexpected behavior during replacement.
   variables = {
     "deployed_at" = timestamp()
   }

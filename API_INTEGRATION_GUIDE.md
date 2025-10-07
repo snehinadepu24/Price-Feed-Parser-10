@@ -18,7 +18,7 @@ This document explains how other teams can access and integrate with the stock p
 
 ### Data Structure
 ```
-s3://stock-pipeline-mvp-dev-ohlcv-{suffix}/
+s3://stock-pipeline-dev-ohlcv-{suffix}/
 ├── year=2025/
 │   ├── month=08/
 │   │   ├── day=29/
@@ -65,13 +65,13 @@ s3://stock-pipeline-mvp-dev-ohlcv-{suffix}/
 ### Access via AWS CLI
 ```bash
 # List available data
-aws s3 ls s3://stock-pipeline-mvp-dev-ohlcv-{suffix}/latest/
+aws s3 ls s3://stock-pipeline-dev-ohlcv-{suffix}/latest/
 
 # Download latest data for specific symbol
-aws s3 cp s3://stock-pipeline-mvp-dev-ohlcv-{suffix}/latest/RELIANCE_latest.json ./
+aws s3 cp s3://stock-pipeline-dev-ohlcv-{suffix}/latest/RELIANCE_latest.json ./
 
 # Download historical data for date range
-aws s3 sync s3://stock-pipeline-mvp-dev-ohlcv-{suffix}/year=2025/month=08/ ./data/
+aws s3 sync s3://stock-pipeline-dev-ohlcv-{suffix}/year=2025/month=08/ ./data/
 ```
 
 ### Access via Python (boto3)
@@ -128,7 +128,7 @@ class StockDataClient:
             return None
 
 # Usage Example
-client = StockDataClient('stock-pipeline-mvp-dev-ohlcv-a1b2c3d4')
+client = StockDataClient('stock-pipeline-dev-ohlcv-a1b2c3d4')
 
 # Get latest prices
 reliance_data = client.get_latest_price('RELIANCE')
@@ -218,7 +218,7 @@ class RealTimeStockStream:
         return response['SubscriptionArn']
 
 # Usage
-stream = RealTimeStockStream('arn:aws:sns:ap-south-1:123456789012:stock-pipeline-mvp-alerts')
+stream = RealTimeStockStream('arn:aws:sns:ap-south-1:123456789012:stock-pipeline-alerts')
 subscription = stream.subscribe_email('your-team@company.com')
 ```
 
@@ -318,7 +318,7 @@ class BatchDataExporter:
             return None
 
 # Usage
-exporter = BatchDataExporter('stock-pipeline-mvp-dev-ohlcv-a1b2c3d4')
+exporter = BatchDataExporter('stock-pipeline-dev-ohlcv-a1b2c3d4')
 df = exporter.export_daily_data(
     date=datetime(2025, 8, 29),
     symbols=['RELIANCE', 'TCS', 'INFY'],
@@ -513,8 +513,8 @@ while True:
                 "s3:ListBucket"
             ],
             "Resource": [
-                "arn:aws:s3:::stock-pipeline-mvp-dev-ohlcv-*",
-                "arn:aws:s3:::stock-pipeline-mvp-dev-ohlcv-*/*"
+                "arn:aws:s3:::stock-pipeline-dev-ohlcv-*",
+                "arn:aws:s3:::stock-pipeline-dev-ohlcv-*/*"
             ]
         },
         {
@@ -523,7 +523,7 @@ while True:
                 "sns:Subscribe",
                 "sns:Unsubscribe"
             ],
-            "Resource": "arn:aws:sns:ap-south-1:*:stock-pipeline-mvp-alerts"
+            "Resource": "arn:aws:sns:ap-south-1:*:stock-pipeline-alerts"
         }
     ]
 }
@@ -535,8 +535,8 @@ while True:
 export AWS_ACCESS_KEY_ID="your-access-key"
 export AWS_SECRET_ACCESS_KEY="your-secret-key"
 export AWS_DEFAULT_REGION="ap-south-1"
-export STOCK_DATA_BUCKET="stock-pipeline-mvp-dev-ohlcv-{suffix}"
-export SNS_TOPIC_ARN="arn:aws:sns:ap-south-1:123456789012:stock-pipeline-mvp-alerts"
+export STOCK_DATA_BUCKET="stock-pipeline-dev-ohlcv-{suffix}"
+export SNS_TOPIC_ARN="arn:aws:sns:ap-south-1:123456789012:stock-pipeline-alerts"
 ```
 
 ---

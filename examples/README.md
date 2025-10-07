@@ -181,12 +181,12 @@ def setup_alerts():
         {
             "Effect": "Allow",
             "Action": ["s3:GetObject", "s3:ListBucket"],
-            "Resource": "arn:aws:s3:::stock-pipeline-mvp-dev-ohlcv-*"
+            "Resource": "arn:aws:s3:::stock-pipeline-dev-ohlcv-*"
         },
         {
             "Effect": "Allow", 
             "Action": ["sns:Subscribe"],
-            "Resource": "arn:aws:sns:ap-south-1:*:stock-pipeline-mvp-alerts"
+            "Resource": "arn:aws:sns:ap-south-1:*:stock-pipeline-alerts"
         }
     ]
 }

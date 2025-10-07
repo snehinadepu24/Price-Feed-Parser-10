@@ -48,7 +48,7 @@ def main():
     
     # Step 2: Enable demo mode
     print("\n🎭 Step 2: Enabling demo mode...")
-    demo_command = f'aws ssm put-parameter --name "/stock-pipeline-mvp/demo_mode" --value "true" --type "String" --overwrite'
+    demo_command = f'aws ssm put-parameter --name "/stock-pipeline/demo_mode" --value "true" --type "String" --overwrite'
     result = run_command(demo_command, "Setting demo mode to true")
     
     if result is not None:
@@ -117,7 +117,7 @@ def main():
     
     # Step 7: Cleanup instructions
     print(f"\n🧹 After Demo - Cleanup:")
-    print('aws ssm put-parameter --name "/stock-pipeline-mvp/demo_mode" --value "false" --overwrite')
+    print('aws ssm put-parameter --name "/stock-pipeline/demo_mode" --value "false" --overwrite')
     
     print(f"\n🎉 Demo setup complete! Your MVP is ready for Saturday.")
 

@@ -36,14 +36,14 @@ def get_bucket_name():
             s3 = boto3.client('s3', region_name='ap-south-1')
             response = s3.list_buckets()
             for bucket in response['Buckets']:
-                if 'stock-pipeline-mvp-dev-ohlcv' in bucket['Name']:
+                if 'stock-pipeline-dev-ohlcv' in bucket['Name']:
                     bucket_name = bucket['Name']
                     print(f"Auto-detected bucket: {bucket_name}")
                     break
         except Exception as e:
             print(f"Could not auto-detect bucket: {e}")
     
-    return bucket_name or "stock-pipeline-mvp-dev-ohlcv-XXXXXXXX"
+    return bucket_name or "stock-pipeline-dev-ohlcv-XXXXXXXX"
 
 def list_recent_data(bucket_name, limit=10):
     """List recent data files"""
@@ -51,13 +51,14 @@ def list_recent_data(bucket_name, limit=10):
     
     try:
         print(f"🔍 DEBUG: Searching in bucket: {bucket_name}")
-        print(f"🔍 DEBUG: Looking for files with prefix: mvp-raw/")
-        
-        # Look for MVP data in the mvp-raw prefix
-        response = s3.list_objects_v2(Bucket=bucket_name, Prefix="mvp-raw/")
+    raw_prefix = os.environ.get('S3_RAW_PREFIX', 'Raw data/Prices/')
+    print(f"🔍 DEBUG: Looking for files with prefix: {raw_prefix}")
+
+    # Look for raw data in configured prefix
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=raw_prefix)
         
         if 'Contents' not in response:
-            print("⚠️  No files found in mvp-raw/ prefix, trying ohlcv/ prefix")
+            print(f"⚠️  No files found in {raw_prefix} prefix, trying ohlcv/ prefix")
             # Fallback to old ohlcv prefix for backward compatibility
             response = s3.list_objects_v2(Bucket=bucket_name, Prefix="ohlcv/")
             

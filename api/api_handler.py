@@ -41,6 +41,11 @@ def lambda_handler(event, context):
             return handle_latest(query_parameters)
         elif path.startswith('/historical'):
             return handle_historical(query_parameters)
+        elif path.startswith('/alfaquantz/price/get'):
+            # Support both path-style and query-style:
+            # Path: /alfaquantz/price/get/infy,1d,3m
+            # Query: /alfaquantz/price/get?symbol=infy&interval=1d&period=3m
+            return handle_alfa_price(path, query_parameters)
         else:
             return create_response(404, {
                 'error': 'Endpoint not found',
@@ -279,9 +284,10 @@ def get_latest_file_key(s3_client, bucket_name: str) -> Optional[str]:
     Get the key of the most recent data file
     """
     try:
+        raw_prefix = os.environ.get('S3_RAW_PREFIX', 'Raw data/Prices/')
         response = s3_client.list_objects_v2(
             Bucket=bucket_name,
-            Prefix='mvp-raw/',
+            Prefix=raw_prefix,
             MaxKeys=1000
         )
         
@@ -380,9 +386,10 @@ def get_recent_files(s3_client, bucket_name: str, days: int = 7) -> List[str]:
     Get list of recent file keys
     """
     try:
+        raw_prefix = os.environ.get('S3_RAW_PREFIX', 'Raw data/Prices/')
         response = s3_client.list_objects_v2(
             Bucket=bucket_name,
-            Prefix='mvp-raw/',
+            Prefix=raw_prefix,
             MaxKeys=1000
         )
         
@@ -565,3 +572,186 @@ def create_response(status_code: int, body: any, content_type: str = 'applicatio
         'headers': headers,
         'body': body
     }
+
+
+def handle_alfa_price(path: str, query_params: Dict = None) -> Dict:
+    """
+    Handle endpoints like /alfaquantz/price/get/{symbol},{interval},{period}
+    where period is e.g. 3m (3 months), 2y (2 years), 30d (30 days)
+    """
+    try:
+        # Prefer query parameters if present
+        qp = query_params or {}
+        raw_symbol = qp.get('symbol')
+        interval = qp.get('interval')
+        period = qp.get('period')
+
+        if not raw_symbol or not interval or not period:
+            # Fallback to path-style parsing
+            prefix = '/alfaquantz/price/get/'
+            tail = path[len(prefix):].strip('/')
+            if not tail:
+                return create_response(400, {'error': 'Missing parameters. Expected /alfaquantz/price/get/{symbol},{interval},{period} or query params'})
+
+            parts = [p.strip() for p in tail.split(',') if p.strip()]
+            if len(parts) < 3:
+                return create_response(400, {'error': 'Invalid parameters. Expected format: symbol,interval,period'})
+
+            raw_symbol, interval, period = parts[0], parts[1], parts[2]
+        symbol = normalize_symbol(raw_symbol)
+
+        s3_client = boto3.client('s3')
+        bucket_name = os.environ.get('S3_BUCKET_NAME')
+
+        # Convert period to from_date (YYYY-MM-DD) and to_date (today)
+        to_date = datetime.utcnow().date()
+        from_date = period_to_from_date(period, to_date)
+
+        # Fetch historical data (MVP uses recent files; we'll filter by date)
+        historical = get_historical_data(s3_client, bucket_name, [symbol], from_date.isoformat(), to_date.isoformat())
+
+        # historical is a dict keyed by symbol
+        symbol_data = historical.get(symbol, {'candles': []})
+
+        # Filter candles by from_date (convert to timestamp)
+        try:
+            from_ts = int(datetime.combine(from_date, datetime.min.time()).timestamp())
+        except Exception:
+            from_ts = 0
+
+        raw_candles = []
+        for c in symbol_data.get('candles', []):
+            # normalize to list form: [ts, open, high, low, close, volume]
+            if isinstance(c, list) and len(c) >= 6:
+                ts = int(c[0])
+                if ts >= from_ts:
+                    raw_candles.append([ts, float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5])])
+            elif isinstance(c, dict):
+                ts = int(c.get('timestamp', 0) or 0)
+                if ts >= from_ts:
+                    raw_candles.append([
+                        ts,
+                        float(c.get('open', 0) or 0),
+                        float(c.get('high', 0) or 0),
+                        float(c.get('low', 0) or 0),
+                        float(c.get('close', 0) or 0),
+                        float(c.get('volume', 0) or 0)
+                    ])
+
+        # If interval aggregation requested, aggregate from raw (assumed smaller) candles
+        try:
+            target_minutes = parse_interval_to_minutes(interval)
+        except Exception:
+            target_minutes = None
+
+        aggregated = raw_candles
+        if target_minutes and target_minutes > 0:
+            # If target is larger than raw granularity, aggregate
+            aggregated = aggregate_candles(raw_candles, target_minutes)
+
+        return create_response(200, {
+            'symbol_requested': raw_symbol,
+            'symbol_normalized': symbol,
+            'interval': interval,
+            'period': period,
+            'from_date': from_date.isoformat(),
+            'to_date': to_date.isoformat(),
+            'count': len(aggregated),
+            'candles': aggregated,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Error in handle_alfa_price: {e}")
+        return create_response(500, {'error': 'Failed to process alfaquantz price request', 'message': str(e)})
+
+
+def period_to_from_date(period: str, to_date) -> datetime.date:
+    """
+    Convert period token like '3m', '2y', '30d' into a from_date (datetime.date).
+    For simplicity months are approximated as 30 days and years as 365 days.
+    """
+    try:
+        token = period.lower().strip()
+        unit = token[-1]
+        value = int(token[:-1]) if len(token) > 1 else 0
+        days = 0
+        if unit == 'd':
+            days = value
+        elif unit == 'm':
+            days = value * 30
+        elif unit == 'y':
+            days = value * 365
+        else:
+            # Default assume days
+            days = int(token)
+
+        return to_date - timedelta(days=days)
+    except Exception:
+        # On parse error default to 30 days
+        return to_date - timedelta(days=30)
+
+
+def parse_interval_to_minutes(interval: str) -> int:
+    """
+    Parse interval tokens like '5m', '15m', '1d' into minutes.
+    Returns minutes as int. '1d' -> 1440.
+    """
+    token = interval.lower().strip()
+    if token.endswith('m'):
+        return int(token[:-1])
+    if token.endswith('h'):
+        return int(token[:-1]) * 60
+    if token.endswith('d'):
+        return int(token[:-1]) * 1440
+    # fallback: assume minutes
+    return int(token)
+
+
+def aggregate_candles(candles: List[List], target_minutes: int) -> List[List]:
+    """
+    Aggregate list-of-list candles into target interval (minutes).
+    Input candles expected as [ts, open, high, low, close, volume] with ts in seconds.
+    Output uses same list form, ordered by timestamp ascending.
+    """
+    if not candles:
+        return []
+
+    # Sort by timestamp
+    candles_sorted = sorted(candles, key=lambda x: x[0])
+
+    bucket_seconds = target_minutes * 60
+    buckets = {}
+
+    for c in candles_sorted:
+        ts, o, h, l, cl, vol = c[0], c[1], c[2], c[3], c[4], c[5]
+        # bucket start timestamp (aligned to epoch)
+        bucket_start = (ts // bucket_seconds) * bucket_seconds
+        if bucket_start not in buckets:
+            buckets[bucket_start] = {
+                'opens': [],
+                'closes': [],
+                'high': h,
+                'low': l,
+                'volume': 0
+            }
+        b = buckets[bucket_start]
+        b['opens'].append((ts, o))
+        b['closes'].append((ts, cl))
+        b['high'] = max(b['high'], h)
+        b['low'] = min(b['low'], l)
+        b['volume'] += vol
+
+    # Build aggregated list sorted by bucket timestamp
+    aggregated = []
+    for bs in sorted(buckets.keys()):
+        b = buckets[bs]
+        # open is the open of the earliest ts in opens
+        open_val = sorted(b['opens'], key=lambda x: x[0])[0][1]
+        close_val = sorted(b['closes'], key=lambda x: x[0])[-1][1]
+        high_val = b['high']
+        low_val = b['low']
+        vol_val = b['volume']
+        aggregated.append([bs, open_val, high_val, low_val, close_val, vol_val])
+
+    return aggregated

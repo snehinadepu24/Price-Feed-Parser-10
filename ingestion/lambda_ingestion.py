@@ -63,8 +63,8 @@ def lambda_handler(event, context):
     Enhanced version using fyers_apiv3 package (same as working local code)
     """
     try:
-        logger.info("Starting Enhanced MVP stock data ingestion")
-        
+        logger.info("Starting stock data ingestion")
+
         # Get configuration from environment
         bucket_name = os.environ['S3_BUCKET_NAME']
         sns_topic_arn = os.environ['SNS_TOPIC_ARN']
@@ -72,17 +72,17 @@ def lambda_handler(event, context):
         fyers_client_id_param = os.environ['FYERS_CLIENT_ID_PARAM']
         environment = os.environ.get('ENVIRONMENT', 'dev')
         enable_trading_hours_check = os.environ.get('ENABLE_TRADING_HOURS_CHECK', 'true').lower() == 'true'
-        
+
         # Initialize clients
         s3_client = boto3.client('s3')
         sns_client = boto3.client('sns')
         ssm_client = boto3.client('ssm')
-        
+
         # Check for demo mode
         demo_mode = False
-        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline-mvp')
+        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline')
         demo_param_name = f"/{project_name}/demo_mode"
-        
+
         try:
             demo_param = ssm_client.get_parameter(Name=demo_param_name)
             demo_value = demo_param['Parameter']['Value']
@@ -94,7 +94,7 @@ def lambda_handler(event, context):
             logger.info(f"Demo mode parameter not found: {demo_param_name} - running in normal mode")
         except Exception as e:
             logger.warning(f"Could not check demo mode: {e}")
-        
+
         # Check trading hours (unless demo mode or disabled)
         if not demo_mode and enable_trading_hours_check and not is_within_trading_hours():
             message = "⏰ Outside trading hours - skipping ingestion"
@@ -106,48 +106,48 @@ def lambda_handler(event, context):
                     'timestamp': datetime.utcnow().isoformat()
                 })
             }
-        
+
         # Get symbols
         symbols = get_mvp_symbols()
-        
+
         # Get OHLCV data (demo mode or real API)
         if demo_mode:
             logger.info("🎬 Demo mode: Generating mock OHLCV data")
             ohlcv_data = generate_mock_ohlcv_data(symbols)
         else:
             logger.info("📊 Fetching real OHLCV data using fyers_apiv3")
-            
+
             # Get credentials from SSM
             credentials = get_fyers_credentials_from_ssm(
-                ssm_client, 
-                fyers_access_token_param, 
+                ssm_client,
+                fyers_access_token_param,
                 fyers_client_id_param
             )
-            
+
             if not credentials:
                 raise Exception("Failed to get Fyers credentials")
-            
+
             # Fetch data using enhanced API with auto-refresh
             ohlcv_data = fetch_ohlcv_data_with_fyers_api(credentials, symbols, ssm_client)
-        
+
         if not ohlcv_data:
             raise Exception("Failed to fetch OHLCV data")
-        
+
         # Store data in S3
         s3_key = store_data_in_s3(s3_client, bucket_name, ohlcv_data, environment)
-        
+
         # Send success notification
         successful_symbols = ohlcv_data['metadata']['successful_symbols']
         total_symbols = ohlcv_data['metadata']['total_symbols_requested']
         success_rate = ohlcv_data['metadata']['success_rate_percent']
-        
-        message = f"✅ MVP Ingestion completed: {successful_symbols}/{total_symbols} symbols ({success_rate}% success)"
-        
+
+        message = f"✅ Ingestion completed: {successful_symbols}/{total_symbols} symbols ({success_rate}% success)"
+
         send_sns_notification(sns_client, sns_topic_arn, "Stock Data Ingestion Success", message)
-        
+
         logger.info(f"✅ {message}")
         logger.info(f"📁 Data stored at: s3://{bucket_name}/{s3_key}")
-        
+
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -159,17 +159,17 @@ def lambda_handler(event, context):
                 'timestamp': datetime.utcnow().isoformat()
             })
         }
-        
+
     except Exception as e:
         error_msg = f"💥 Lambda execution failed: {str(e)}"
         logger.error(error_msg)
-        
+
         # Send error notification
         try:
             send_sns_notification(sns_client, sns_topic_arn, "Stock Data Ingestion Failed", error_msg)
-        except:
+        except Exception:
             pass
-        
+
         return {
             'statusCode': 500,
             'body': json.dumps({
@@ -185,7 +185,7 @@ def get_fyers_credentials_from_ssm(ssm_client, access_token_param: str, client_i
     """
     try:
         # Get all required parameters including refresh token
-        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline-mvp')
+        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline')
         refresh_token_param = os.environ.get('FYERS_REFRESH_TOKEN_PARAM', f"/{project_name}/fyers/refresh_token")
         app_secret_param = os.environ.get('FYERS_APP_SECRET_PARAM', f"/{project_name}/fyers/app_secret")
         
@@ -356,7 +356,7 @@ def fetch_ohlcv_data_with_fyers_api(credentials: Dict[str, str], symbols: List[s
                             
                             # Update SSM parameter
                             try:
-                                project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline-mvp')
+                                project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline')
                                 access_token_param = os.environ.get('FYERS_ACCESS_TOKEN_PARAM', f"/{project_name}/fyers/access_token")
                                 ssm_client.put_parameter(
                                     Name=access_token_param,
@@ -534,17 +534,28 @@ def store_data_in_s3(s3_client, bucket_name: str, data: Dict, environment: str) 
         day = current_time.strftime('%d')
         timestamp = current_time.strftime('%Y%m%d_%H%M%S')
         
-        # S3 key with partitioning
-        s3_key = f"mvp-raw/year={year}/month={month}/day={day}/ohlcv_mvp_{timestamp}.json"
-        
-        # Upload to S3
+
+        # Example: Company Data upload
+        # security_id should be passed or determined elsewhere in your code
+        security_id = data.get('security_id', 'example_security_id')
+        company_data_key = f"Company Data/{security_id}/Prices/ohlcv_{timestamp}.parquet"
+
+        # Example: Raw Data upload
+        raw_data_key = f"Raw data/Prices/{year}-{month}-{day}/raw_file_{timestamp}.json"
+
+        # Choose which key to use based on data type (customize as needed)
+        if data.get('is_company_data'):
+            s3_key = company_data_key
+        else:
+            s3_key = raw_data_key
+
         s3_client.put_object(
             Bucket=bucket_name,
             Key=s3_key,
             Body=json.dumps(data, indent=2),
             ContentType='application/json'
         )
-        
+
         logger.info(f"📁 Data stored in S3: {s3_key}")
         return s3_key
         

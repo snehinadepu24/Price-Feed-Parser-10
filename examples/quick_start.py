@@ -20,7 +20,7 @@ def main():
     
     if not bucket_name:
         print("❌ Error: STOCK_DATA_BUCKET environment variable not set")
-        print("Please set: export STOCK_DATA_BUCKET='stock-pipeline-mvp-dev-ohlcv-suffix'")
+    print("Please set: export STOCK_DATA_BUCKET='stock-pipeline-dev-ohlcv-suffix'")
         return
     
     print(f"📊 Connected to bucket: {bucket_name}")
@@ -153,7 +153,7 @@ def export_to_csv(symbols, date_str):
 if __name__ == "__main__":
     # Set example environment variables if not set
     if not os.getenv('STOCK_DATA_BUCKET'):
-        os.environ['STOCK_DATA_BUCKET'] = 'stock-pipeline-mvp-dev-ohlcv-example'
+    os.environ['STOCK_DATA_BUCKET'] = 'stock-pipeline-dev-ohlcv-example'
         print("⚠️  Using example bucket name. Set STOCK_DATA_BUCKET environment variable.")
     
     main()

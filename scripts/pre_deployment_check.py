@@ -173,9 +173,9 @@ def get_deployment_info() -> Dict[str, str]:
     print_success(f"AWS Region: {region}")
     
     # Get project name
-    project = input("Enter project name [stock-pipeline-mvp]: ").strip()
+    project = input("Enter project name [stock-pipeline]: ").strip()
     if not project:
-        project = "stock-pipeline-mvp"
+        project = "stock-pipeline"
     config['project'] = project
     print_success(f"Project name: {project}")
     
@@ -199,7 +199,7 @@ def check_file_structure() -> bool:
     print_header("Checking File Structure")
     
     required_files = [
-        'infra/main-mvp.tf',
+    'infra/main-mvp.tf',
         'deployment/deploy-mvp.ps1',
         'deployment/deploy-mvp.sh',
         'ingestion/lambda_ingestion.py',

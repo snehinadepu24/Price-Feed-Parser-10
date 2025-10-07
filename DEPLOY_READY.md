@@ -110,10 +110,10 @@ aws lambda list-functions --query 'Functions[?contains(FunctionName, `token-gene
 ### **View Logs**
 ```powershell
 # Token generator logs
-aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-mvp-token-generator"
+aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-token-generator"
 
 # Pipeline logs
-aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-mvp-ingestion"
+aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-ingestion"
 ```
 
 ---

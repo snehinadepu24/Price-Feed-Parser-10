@@ -82,7 +82,7 @@ def update_env_file(config: Dict[str, str]) -> bool:
     replacements = {
         'NOTIFICATION_EMAIL=your-email@example.com': f'NOTIFICATION_EMAIL={config["email"]}',
         'AWS_DEFAULT_REGION=ap-south-1': f'AWS_DEFAULT_REGION={config["region"]}',
-        'PROJECT_NAME=stock-pipeline-mvp': f'PROJECT_NAME={config["project"]}',
+    'PROJECT_NAME=stock-pipeline': f'PROJECT_NAME={config["project"]}',
         'ENVIRONMENT=dev': f'ENVIRONMENT={config["environment"]}',
         'MONTHLY_BUDGET_LIMIT=5': f'MONTHLY_BUDGET_LIMIT={config["budget"]}',
     }
@@ -119,8 +119,8 @@ def get_user_config() -> Dict[str, str]:
     config['region'] = region if region else default_region
     
     # Project name
-    project = input("Enter project name [stock-pipeline-mvp]: ").strip()
-    config['project'] = project if project else "stock-pipeline-mvp"
+    project = input("Enter project name [stock-pipeline]: ").strip()
+    config['project'] = project if project else "stock-pipeline"
     
     # Environment
     environment = input("Enter environment [dev]: ").strip()

@@ -1,3 +1,6 @@
+# Ignore deletion logs and backup files
+deletions-backup-*.zip
+deployment/deletion_log.txt
 node_modules
 
 # Terraform

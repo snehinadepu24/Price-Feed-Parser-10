@@ -547,8 +547,8 @@ def generate_and_store_tokens(body, headers):
             }
         
         # Store tokens in SSM Parameter Store
-        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline-mvp')
-        
+        project_name = os.environ.get('PROJECT_NAME', 'stock-pipeline')
+
         parameters_updated = []
         
         # Store access token

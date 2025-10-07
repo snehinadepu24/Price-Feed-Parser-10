@@ -98,7 +98,7 @@ NEW Token Generator:
 ```powershell
 # Every morning you had to:
 python scripts/manual_token_generator.py
-aws ssm put-parameter --name "/stock-pipeline-mvp/fyers/access_token" --value "..."
+aws ssm put-parameter --name "/stock-pipeline/fyers/access_token" --value "..."
 # Complex command-line workflow
 ```
 

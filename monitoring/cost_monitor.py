@@ -171,7 +171,7 @@ class MVPCostMonitor:
                 report.append("")
             
             # Budget status
-            budget_status = self.check_budget_status("stock-pipeline-mvp-mvp-budget")
+            budget_status = self.check_budget_status("stock-pipeline-budget")
             if budget_status:
                 report.append("📊 BUDGET STATUS:")
                 budget_limit = budget_status['budget_limit']

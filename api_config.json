@@ -8,7 +8,7 @@
     },
     "endpoints": {
         "s3_bucket": {
-            "name": "stock-pipeline-mvp-dev-ohlcv-{SUFFIX}",
+            "name": "stock-pipeline-dev-ohlcv-{SUFFIX}",
             "region": "ap-south-1",
             "data_structure": {
                 "latest": "latest/{SYMBOL}_latest.json",
@@ -16,11 +16,11 @@
             }
         },
         "sns_topic": {
-            "arn": "arn:aws:sns:ap-south-1:{ACCOUNT_ID}:stock-pipeline-mvp-alerts",
+            "arn": "arn:aws:sns:ap-south-1:{ACCOUNT_ID}:stock-pipeline-alerts",
             "description": "Real-time notifications for data updates and alerts"
         },
         "cloudwatch_logs": {
-            "log_group": "/aws/lambda/stock-pipeline-mvp-ingestion",
+            "log_group": "/aws/lambda/stock-pipeline-ingestion",
             "region": "ap-south-1"
         }
     },

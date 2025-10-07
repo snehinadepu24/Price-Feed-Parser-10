@@ -165,9 +165,9 @@ class QuickStartWizard:
         self.config['region'] = region
         
         # Get project name
-        project = input("Enter project name [stock-pipeline-mvp]: ").strip()
+        project = input("Enter project name [stock-pipeline]: ").strip()
         if not project:
-            project = "stock-pipeline-mvp"
+            project = "stock-pipeline"
         self.config['project'] = project
         
         print(f"\n✅ Configuration saved:")
@@ -252,7 +252,7 @@ class QuickStartWizard:
             print("You can update them later in AWS SSM Parameter Store.")
         else:
             # Update AWS SSM Parameter Store
-            project_name = self.config.get('project', 'stock-pipeline-mvp')
+            project_name = self.config.get('project', 'stock-pipeline')
             
             # Store client_id
             success1 = self.run_command([

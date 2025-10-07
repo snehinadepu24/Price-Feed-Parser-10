@@ -252,10 +252,10 @@ When successful, you'll see:
 ==========================
 
 📊 Deployed Resources (Free Tier):
-  • S3 Bucket: stock-pipeline-mvp-dev-ohlcv-[random]
-  • Lambda Function: stock-pipeline-mvp-ingestion
-  • SNS Topic: arn:aws:sns:ap-south-1:[account]:stock-pipeline-mvp-alerts
-  • Secrets Manager: stock-pipeline-mvp-fyers-credentials
+   • S3 Bucket: stock-pipeline-dev-ohlcv-[random]
+   • Lambda Function: stock-pipeline-ingestion
+   • SNS Topic: arn:aws:sns:ap-south-1:[account]:stock-pipeline-alerts
+   • Secrets Manager: stock-pipeline-fyers-credentials
 ```
 
 **Save these resource names!** You'll need them for the next steps.
@@ -267,7 +267,7 @@ When successful, you'll see:
 ### Step 6.1: Update Secrets Manager
 **Option A: Using AWS Console (Easier for beginners)**
 1. **Go to AWS Console** → Search "Secrets Manager"
-2. **Click on** `stock-pipeline-mvp-fyers-credentials`
+2. **Click on** `stock-pipeline-fyers-credentials`
 3. **Click "Retrieve secret value"**
 4. **Click "Edit"**
 5. **Replace the JSON** with your actual credentials:
@@ -283,7 +283,7 @@ When successful, you'll see:
 **Option B: Using AWS CLI**
 ```bash
 aws secretsmanager update-secret \
-    --secret-id stock-pipeline-mvp-fyers-credentials \
+   --secret-id stock-pipeline-fyers-credentials \
     --secret-string '{"access_token":"YOUR_TOKEN","client_id":"YOUR_CLIENT_ID","refresh_token":"YOUR_REFRESH_TOKEN"}'
 ```
 
@@ -298,7 +298,7 @@ aws secretsmanager update-secret \
 
 ### Step 7.1: Test Lambda Function
 1. **Go to AWS Console** → Search "Lambda"
-2. **Click on** `stock-pipeline-mvp-ingestion`
+2. **Click on** `stock-pipeline-ingestion`
 3. **Click "Test"**
 4. **Create new test event**:
    - Name: `manual-test`
@@ -321,7 +321,7 @@ aws secretsmanager update-secret \
 ### Step 7.3: Verify S3 Data Storage
 1. **Go to AWS Console** → Search "S3"
 2. **Click on your bucket** (name from deployment output)
-3. **Navigate to** `mvp-raw/` folder
+3. **Navigate to** `Raw data/Prices/` folder
 4. **You should see folders** organized by year/month/day
 5. **Download a JSON file** to verify data structure
 
@@ -464,10 +464,10 @@ python cost_monitor.py
 If costs exceed expectations:
 ```bash
 # Pause the system by disabling the schedule
-aws events disable-rule --name stock-pipeline-mvp-ingestion-schedule
+aws events disable-rule --name stock-pipeline-ingestion-schedule
 
 # To re-enable later:
-aws events enable-rule --name stock-pipeline-mvp-ingestion-schedule
+aws events enable-rule --name stock-pipeline-ingestion-schedule
 ```
 
 ---

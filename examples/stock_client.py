@@ -17,7 +17,7 @@ class StockDataClient:
         Initialize the stock data client
         
         Args:
-            bucket_name: S3 bucket name (e.g., 'stock-pipeline-mvp-dev-ohlcv-a1b2c3d4')
+            bucket_name: S3 bucket name (e.g., 'stock-pipeline-dev-ohlcv-a1b2c3d4')
             region: AWS region (default: 'ap-south-1')
         """
         self.s3 = boto3.client('s3', region_name=region)
@@ -246,7 +246,7 @@ if __name__ == "__main__":
     import os
     
     # Initialize client
-    bucket_name = os.getenv('STOCK_DATA_BUCKET', 'stock-pipeline-mvp-dev-ohlcv-a1b2c3d4')
+    bucket_name = os.getenv('STOCK_DATA_BUCKET', 'stock-pipeline-dev-ohlcv-a1b2c3d4')
     client = StockDataClient(bucket_name)
     
     # Get latest prices

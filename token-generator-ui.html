@@ -446,15 +446,15 @@
 # Generated on: ${new Date().toLocaleString()}
 
 # Update AWS SSM Parameters with your new tokens
-aws ssm put-parameter --name "/stock-pipeline-mvp/fyers/access_token" --value "${currentTokens.access_token}" --type "SecureString" --overwrite
-aws ssm put-parameter --name "/stock-pipeline-mvp/fyers/refresh_token" --value "${currentTokens.refresh_token}" --type "SecureString" --overwrite
-aws ssm put-parameter --name "/stock-pipeline-mvp/fyers/client_id" --value "${currentTokens.client_id}" --type "SecureString" --overwrite
+aws ssm put-parameter --name "/stock-pipeline/fyers/access_token" --value "${currentTokens.access_token}" --type "SecureString" --overwrite
+aws ssm put-parameter --name "/stock-pipeline/fyers/refresh_token" --value "${currentTokens.refresh_token}" --type "SecureString" --overwrite
+aws ssm put-parameter --name "/stock-pipeline/fyers/client_id" --value "${currentTokens.client_id}" --type "SecureString" --overwrite
 
 # Verify update
-aws ssm get-parameters --names "/stock-pipeline-mvp/fyers/access_token" "/stock-pipeline-mvp/fyers/refresh_token" --with-decryption
+aws ssm get-parameters --names "/stock-pipeline/fyers/access_token" "/stock-pipeline/fyers/refresh_token" --with-decryption
 
 # Test Lambda function with new tokens
-aws lambda invoke --function-name stock-pipeline-mvp-ingestion --payload "{}" test-response.json
+aws lambda invoke --function-name stock-pipeline-ingestion --payload "{}" test-response.json
 
 echo "Tokens updated successfully!"`;
 
@@ -486,9 +486,9 @@ echo "Tokens updated successfully!"`;
                 usage_instructions: {
                     access_token_usage: 'Use for API calls with format: clientId:accessToken',
                     aws_ssm_parameters: {
-                        access_token: '/stock-pipeline-mvp/fyers/access_token',
-                        refresh_token: '/stock-pipeline-mvp/fyers/refresh_token',
-                        client_id: '/stock-pipeline-mvp/fyers/client_id'
+                        access_token: '/stock-pipeline/fyers/access_token',
+                        refresh_token: '/stock-pipeline/fyers/refresh_token',
+                        client_id: '/stock-pipeline/fyers/client_id'
                     }
                 }
             };
@@ -547,19 +547,19 @@ echo "Tokens updated successfully!"`;
         function viewLogs() {
             const logCommands = `# AWS CloudWatch and Lambda Log Commands
 # View recent Lambda logs
-aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-mvp-ingestion" --start-time $(date -d '1 hour ago' +%s)000
+aws logs filter-log-events --log-group-name "/aws/lambda/stock-pipeline-ingestion" --start-time $(date -d '1 hour ago' +%s)000
 
 # Check current SSM parameters
-aws ssm get-parameters --names "/stock-pipeline-mvp/fyers/access_token" "/stock-pipeline-mvp/fyers/refresh_token" --with-decryption
+aws ssm get-parameters --names "/stock-pipeline/fyers/access_token" "/stock-pipeline/fyers/refresh_token" --with-decryption
 
 # Test Lambda function
-aws lambda invoke --function-name stock-pipeline-mvp-ingestion --payload "{}" test-response.json
+aws lambda invoke --function-name stock-pipeline-ingestion --payload "{}" test-response.json
 
 # Check S3 bucket for latest data
-aws s3 ls s3://stock-pipeline-mvp-data/ --recursive | tail -10
+aws s3 ls s3://stock-pipeline-data/ --recursive | tail -10
 
 # View Lambda function configuration
-aws lambda get-function-configuration --function-name stock-pipeline-mvp-ingestion`;
+aws lambda get-function-configuration --function-name stock-pipeline-ingestion`;
 
             navigator.clipboard.writeText(logCommands).then(() => {
                 showMessage('📋 Log commands copied to clipboard! Paste in your terminal.', 'success');
