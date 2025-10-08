@@ -48,10 +48,7 @@ terraform plan -var="notification_email=your-email@example.com"
 terraform apply -var="notification_email=your-email@example.com"
 
 # Automated deployment script
-cd deployment
-./deploy-mvp.sh  # Linux/Mac
-# OR
-.\deploy-mvp.ps1 -NotificationEmail "your-email@example.com"  # Windows
+./deploy.ps1 -Email "your-email@example.com" -Apply  # Windows
 ```
 
 ## Docker
@@ -68,6 +65,11 @@ cd deployment
 - Manages API tokens and credentials
 - Provides web UI for token generation
 - Stores tokens in SSM Parameter Store
+
+**ETL Processing**: `etl/lightweight_etl.py`
+- Transforms raw JSON data to CSV format
+- Partitions data by symbol, year, month, day
+- Optimized for Athena querying
 
 **Infrastructure**: `infra/main-mvp.tf`
 - Defines AWS resources using Terraform
@@ -92,7 +94,7 @@ aws logs tail /aws/lambda/stock-pipeline-ingestion --follow
 3. If token expired, automatic refresh from SSM Parameter Store
 4. Fetch OHLCV data from Fyers API
 5. Store raw JSON data in S3 with partitioning
-6. Optional ETL to transform to Parquet format
+6. ETL Lambda transforms data to CSV/Parquet format
 7. Query data using Athena (production setup)
 
 ## Configuration

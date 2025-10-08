@@ -302,17 +302,74 @@ def get_latest_file_key(s3_client, bucket_name: str) -> Optional[str]:
         logger.error(f"❌ Error getting latest file: {str(e)}")
         return None
 
+def parse_date_to_timestamp(date_str: str, is_start: bool = True) -> int:
+    """
+    Convert date string (YYYY-MM-DD) to Unix timestamp
+    Args:
+        date_str: Date in YYYY-MM-DD format
+        is_start: True for start of day (00:00:00), False for end of day (23:59:59)
+    """
+    try:
+        if not date_str:
+            return 0
+        
+        # Parse date string
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        
+        if is_start:
+            # Start of day (00:00:00)
+            return int(date_obj.timestamp())
+        else:
+            # End of day (23:59:59)
+            end_of_day = date_obj.replace(hour=23, minute=59, second=59)
+            return int(end_of_day.timestamp())
+    except Exception as e:
+        logger.warning(f"⚠️ Error parsing date '{date_str}': {str(e)}")
+        return 0
+
+def calculate_days_between(from_date: str = None, to_date: str = None) -> int:
+    """
+    Calculate number of days between from_date and to_date
+    Defaults to reasonable values if dates not provided
+    """
+    try:
+        if not from_date and not to_date:
+            return 7  # Default to 7 days
+        
+        # Parse dates
+        if to_date:
+            to_dt = datetime.strptime(to_date, '%Y-%m-%d')
+        else:
+            to_dt = datetime.utcnow()
+        
+        if from_date:
+            from_dt = datetime.strptime(from_date, '%Y-%m-%d')
+        else:
+            from_dt = to_dt - timedelta(days=7)
+        
+        # Calculate difference
+        days = (to_dt - from_dt).days + 1  # +1 to include both endpoints
+        
+        # Cap at reasonable limits
+        return min(max(days, 1), 365)  # Between 1 and 365 days
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Error calculating days between dates: {str(e)}")
+        return 7  # Default fallback
+
 def get_ohlcv_data(s3_client, bucket_name: str, symbol: str, 
                    from_date: str = None, to_date: str = None, 
                    interval: str = '5', limit: str = None) -> List[Dict]:
     """
-    Get OHLCV data for a specific symbol
+    Get OHLCV data for a specific symbol with date range filtering
     """
     try:
-        # For MVP, we'll get data from recent files
-        # In production, you'd implement proper date-based querying
+        # Determine how many days of files to fetch based on date range
+        days_to_fetch = 7  # Default
+        if from_date or to_date:
+            days_to_fetch = calculate_days_between(from_date, to_date)
         
-        recent_files = get_recent_files(s3_client, bucket_name, days=7)
+        recent_files = get_recent_files(s3_client, bucket_name, days=max(days_to_fetch, 7))
         ohlcv_candles = []
         
         for file_key in recent_files:
@@ -366,6 +423,16 @@ def get_ohlcv_data(s3_client, bucket_name: str, symbol: str,
                 unique_candles[timestamp] = candle
         
         sorted_candles = sorted(unique_candles.values(), key=lambda x: x.get('timestamp', 0))
+        
+        # Apply date range filtering
+        if from_date or to_date:
+            from_ts = parse_date_to_timestamp(from_date, is_start=True) if from_date else 0
+            to_ts = parse_date_to_timestamp(to_date, is_start=False) if to_date else float('inf')
+            
+            sorted_candles = [
+                c for c in sorted_candles 
+                if from_ts <= c.get('timestamp', 0) <= to_ts
+            ]
         
         # Apply limit if specified
         if limit:
@@ -449,11 +516,15 @@ def get_latest_data(s3_client, bucket_name: str, symbols: List[str]) -> Dict:
 def get_historical_data(s3_client, bucket_name: str, symbols: List[str], 
                        from_date: str = None, to_date: str = None) -> Dict:
     """
-    Get historical data for specified symbols
+    Get historical data for specified symbols with date range filtering
     """
     try:
-        # For MVP, get data from recent files
-        recent_files = get_recent_files(s3_client, bucket_name, days=30)
+        # Determine how many days of files to fetch based on date range
+        days_to_fetch = 30  # Default
+        if from_date or to_date:
+            days_to_fetch = calculate_days_between(from_date, to_date)
+        
+        recent_files = get_recent_files(s3_client, bucket_name, days=max(days_to_fetch, 7))
         historical_data = {}
         
         for symbol in symbols:
@@ -483,6 +554,10 @@ def get_historical_data(s3_client, bucket_name: str, symbols: List[str],
                 continue
         
         # Deduplicate and sort candles for each symbol
+        # Parse date range for filtering
+        from_ts = parse_date_to_timestamp(from_date, is_start=True) if from_date else 0
+        to_ts = parse_date_to_timestamp(to_date, is_start=False) if to_date else float('inf')
+        
         for symbol in historical_data:
             candles = historical_data[symbol]['candles']
             unique_candles = {}
@@ -490,15 +565,17 @@ def get_historical_data(s3_client, bucket_name: str, symbols: List[str],
             for candle in candles:
                 if isinstance(candle, list) and len(candle) >= 6:
                     timestamp = candle[0]
-                    unique_candles[timestamp] = {
-                        'timestamp': timestamp,
-                        'datetime': datetime.fromtimestamp(timestamp).isoformat() + 'Z',
-                        'open': candle[1],
-                        'high': candle[2],
-                        'low': candle[3],
-                        'close': candle[4],
-                        'volume': candle[5]
-                    }
+                    # Apply date filtering
+                    if from_ts <= timestamp <= to_ts:
+                        unique_candles[timestamp] = {
+                            'timestamp': timestamp,
+                            'datetime': datetime.fromtimestamp(timestamp).isoformat() + 'Z',
+                            'open': candle[1],
+                            'high': candle[2],
+                            'low': candle[3],
+                            'close': candle[4],
+                            'volume': candle[5]
+                        }
             
             historical_data[symbol]['candles'] = sorted(
                 unique_candles.values(), 

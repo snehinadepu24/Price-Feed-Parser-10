@@ -37,7 +37,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string
-  default     = "stock-pipeline"
+  default     = "stock-pipeline-mvp"
 }
 
 variable "environment" {
@@ -487,6 +487,33 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.ingestion_schedule.arn
 }
 
+# ETL Lambda scheduled to run once daily at 4 PM IST (10:30 AM UTC)
+# Processes previous day's data after market close
+resource "aws_cloudwatch_event_rule" "etl_schedule" {
+  name                = "${var.project_name}-etl-schedule"
+  description         = "Trigger ETL processing daily after market close"
+  schedule_expression = "cron(30 10 ? * MON-FRI *)"
+
+  tags = merge(local.common_tags, {
+    FreeTier = "Yes"
+    Purpose  = "ETL"
+  })
+}
+
+resource "aws_cloudwatch_event_target" "etl_target" {
+  rule      = aws_cloudwatch_event_rule.etl_schedule.name
+  target_id = "ETLLambdaTarget"
+  arn       = aws_lambda_function.lightweight_etl.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_etl" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lightweight_etl.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.etl_schedule.arn
+}
+
 # -----------------------------------------------------------------------------
 # Token Generator API Gateway
 # -----------------------------------------------------------------------------
@@ -621,6 +648,44 @@ resource "aws_api_gateway_stage" "token_generator" {
 }
 
 # -----------------------------------------------------------------------------
+# Analytics Lambda (Pandas-based queries - 100% FREE)
+# COMMENTED OUT: Pandas package too large for Mumbai region (no Lambda Layers)
+# Use lightweight_etl.py or query CSV files directly via S3 Select
+# -----------------------------------------------------------------------------
+# resource "aws_lambda_function" "analytics" {
+#   s3_bucket        = aws_s3_bucket.ohlcv_data.id
+#   s3_key           = "lambda/lambda_analytics.zip"
+#   function_name    = "${var.project_name}-${var.environment}-analytics"
+#   role             = aws_iam_role.lambda_execution.arn
+#   handler          = "lambda_analytics.lambda_handler"
+#   source_code_hash = filebase64sha256("${path.module}/../deployment/lambda_analytics.zip")
+#   runtime          = "python3.11"
+#   timeout          = 60
+#   memory_size      = 1536  # 1.5 GB for Pandas operations
+# 
+#   environment {
+#     variables = {
+#       S3_BUCKET_NAME = aws_s3_bucket.ohlcv_data.id
+#       CSV_PREFIX     = "analytics/csv"
+#     }
+#   }
+# 
+#   tags = merge(local.common_tags, {
+#     Purpose  = "DataAnalytics"
+#     FreeTier = "Yes"
+#   })
+# }
+# 
+# resource "aws_cloudwatch_log_group" "analytics_logs" {
+#   name              = "/aws/lambda/${aws_lambda_function.analytics.function_name}"
+#   retention_in_days = 7
+# 
+#   tags = merge(local.common_tags, {
+#     Purpose = "Logging"
+#   })
+# }
+
+# -----------------------------------------------------------------------------
 # IAM
 # -----------------------------------------------------------------------------
 resource "aws_iam_role" "lambda_execution" {
@@ -744,6 +809,11 @@ output "lambda_function_name" {
   value       = aws_lambda_function.data_ingestion.function_name
 }
 
+output "etl_lambda_function_name" {
+  description = "Lambda function name for ETL processing"
+  value       = aws_lambda_function.lightweight_etl.function_name
+}
+
 output "sns_topic_arn" {
   description = "SNS topic ARN for alerts"
   value       = aws_sns_topic.alerts.arn
@@ -789,12 +859,43 @@ output "cloudwatch_logs_url" {
   value       = "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#logsV2:log-groups/log-group/${replace(aws_cloudwatch_log_group.lambda_logs.name, "/", "$252F")}"
 }
 
+output "etl_cloudwatch_logs_url" {
+  description = "CloudWatch logs URL for monitoring ETL Lambda function"
+  value       = "https://${data.aws_region.current.name}.console.aws.amazon.com/cloudwatch/home?region=${data.aws_region.current.name}#logsV2:log-groups/log-group/${replace(aws_cloudwatch_log_group.etl_logs.name, "/", "$252F")}"
+}
+
 output "s3_console_url" {
   description = "S3 console URL for viewing stored data"
   value       = "https://s3.console.aws.amazon.com/s3/buckets/${aws_s3_bucket.ohlcv_data.id}?region=${data.aws_region.current.name}"
 }
 
+output "s3_analytics_path" {
+  description = "S3 path for analytics CSV files"
+  value       = "s3://${aws_s3_bucket.ohlcv_data.id}/analytics/csv/"
+}
+
 output "mvp_budget_name" {
   description = "MVP cost budget name"
   value       = aws_budgets_budget.mvp_budget.name
+}
+
+# output "analytics_lambda_function_name" {
+#   description = "Lambda function name for analytics queries (Pandas-based)"
+#   value       = aws_lambda_function.analytics.function_name
+# }
+
+output "deployment_summary" {
+  description = "Deployment summary with key information"
+  value = {
+    ingestion_lambda    = aws_lambda_function.data_ingestion.function_name
+    etl_lambda          = aws_lambda_function.lightweight_etl.function_name
+    # analytics_lambda    = aws_lambda_function.analytics.function_name  # Commented out - Pandas too large for Mumbai
+    s3_bucket           = aws_s3_bucket.ohlcv_data.id
+    raw_data_path       = "s3://${aws_s3_bucket.ohlcv_data.id}/Raw data/Prices/"
+    analytics_csv_path  = "s3://${aws_s3_bucket.ohlcv_data.id}/analytics/csv/"
+    ingestion_schedule  = "Every 5 minutes during trading hours (Mon-Fri 9:15-15:30 IST)"
+    etl_schedule        = "Daily at 4:00 PM IST (10:30 AM UTC)"
+    analytics_info      = "Query CSV files directly from S3 or use Athena (see FREE_TIER_ALTERNATIVES.md)"
+    token_generator_ui  = "https://${aws_api_gateway_rest_api.token_generator.id}.execute-api.${data.aws_region.current.name}.amazonaws.com/prod"
+  }
 }
