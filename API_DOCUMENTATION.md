@@ -1,12 +1,58 @@
-# Stock Data API Documentation
+# Stock Data API Documentation - LIVE & WORKING! 🚀
+
+## ⚡ **API Status: DEPLOYED & OPERATIONAL**
+
+Your REST API is **live and fully functional**! Other teams can start querying stock data immediately.
+
+**Base URL:**
+```
+https://jbw2maikhd.execute-api.ap-south-1.amazonaws.com/dev
+```
+
+**Lambda Function:** `stock-pipeline-mvp-api-handler`  
+**Data Source:** S3 Raw JSON files (`Raw data/Prices/`)  
+**Cost:** **$0.00/month** (100% FREE TIER)  
+**Update Frequency:** Every 5 minutes during trading hours
+
+---
+
+## 📋 Quick Start
+
+```bash
+# Test the API now!
+curl "https://jbw2maikhd.execute-api.ap-south-1.amazonaws.com/dev/symbols"
+```
+
+---
 
 ## Overview
-The Stock Data API provides REST endpoints for accessing real-time and historical OHLCV (Open, High, Low, Close, Volume) data for Indian stock market symbols. The API is designed for consumption by other teams and applications.
+The Stock Data API provides REST endpoints for accessing real-time and historical OHLCV (Open, High, Low, Close, Volume) data for Indian stock market symbols.
 
 ## Base URL
 ```
 https://jbw2maikhd.execute-api.ap-south-1.amazonaws.com/dev
 ```
+
+## 📊 **Data Source & Architecture**
+
+### Where API Gets Data From
+- **Source:** S3 bucket `Raw data/Prices/` folder
+- **Format:** Raw JSON files created by ingestion Lambda
+- **Update:** Every 5 minutes during market hours (9:15 AM - 3:30 PM IST)
+- **NOT USING:** Analytics CSV files (those are for Athena/analytics only)
+
+### Why Raw JSON (Not CSV)?
+✅ **Real-time:** Updated every 5 minutes (vs CSV once daily)  
+✅ **Faster:** Single file contains all symbols  
+✅ **Simpler:** Direct JSON parsing, less code  
+✅ **Better for APIs:** Designed for quick queries
+
+### Data Flow
+```
+Fyers API → Ingestion Lambda (every 5 min) → Raw JSON (S3) → API Handler → REST API Response
+```
+
+---
 
 ## Authentication
 Currently, no authentication is required. The API uses CORS headers to allow cross-origin requests.

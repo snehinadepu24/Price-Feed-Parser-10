@@ -2,12 +2,12 @@
 
 Before deploying your Stock Price Feed Parser, you need to install the required tools.
 
-## Quick Installation (Recommended)
+## Required Tools
+1. **AWS CLI** - To interact with AWS services
+2. **Terraform** - To deploy infrastructure
+3. **Python 3.8+** - For local testing (optional)
 
-Use the automated setup script:
-```powershell
-.\scripts\install_prerequisites.ps1
-```
+---
 
 ## Manual Installation
 
@@ -81,10 +81,17 @@ Enter your AWS credentials:
 
 ### 5. Verify Everything is Working
 
-Run the deployment prerequisite check:
+Run a simple test:
 ```powershell
-cd deployment
-.\deploy-mvp.ps1 -NotificationEmail "test@example.com" -WhatIf
+# Check AWS credentials
+aws sts get-caller-identity
+
+# Check Terraform
+cd "Price Feed Parser\infra"
+terraform version
+
+# View Terraform plan (without applying)
+terraform plan -var="notification_email=test@example.com"
 ```
 
 ## Troubleshooting
@@ -107,9 +114,15 @@ cd deployment
 
 After installing prerequisites:
 
-1. **Configure environment**: `.\scripts\env_setup.ps1`
-2. **Deploy infrastructure**: `.\deployment\deploy-mvp.ps1 -NotificationEmail "your-email@example.com"`
-3. **Verify deployment**: Check AWS Console for created resources
+1. **Configure AWS credentials**: `aws configure` (if not done already)
+2. **Deploy infrastructure**: 
+   ```powershell
+   cd infra
+   terraform init
+   terraform apply -var="notification_email=your-email@example.com"
+   ```
+3. **Configure Fyers credentials** in SSM Parameter Store (see README.md)
+4. **Verify deployment**: Check AWS Console for created resources
 
 ## Getting AWS Credentials
 

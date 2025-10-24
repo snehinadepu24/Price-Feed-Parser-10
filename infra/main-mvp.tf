@@ -115,9 +115,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "ohlcv_data" {
       storage_class = "STANDARD_IA"
     }
 
-    expiration {
-      days = 120
-    }
+    # No expiration - data kept indefinitely
+    # After 45 days, data moves to cheaper Infrequent Access storage
+    # Cost: ~$0.0125/GB/month (IA) vs $0.023/GB/month (Standard)
   }
 
   rule {

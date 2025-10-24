@@ -192,10 +192,14 @@ You should see your account ID and user info.
 
 ### Step 5.1: Download the Code
 ```bash
-# Clone or download the project
-# If you don't have git, download as ZIP from the repository
-git clone [repository-url]
-cd "Price Feed Parser"
+# Clone the project from GitHub
+git clone https://github.com/snehinadepu24/Price-Feed-Parser-10.git
+cd Price-Feed-Parser-10
+
+# OR download as ZIP:
+# 1. Visit: https://github.com/snehinadepu24/Price-Feed-Parser-10
+# 2. Click "Code" → "Download ZIP"
+# 3. Extract and navigate to the folder
 ```
 
 ### Step 5.2: Review the MVP Configuration
@@ -209,28 +213,44 @@ cd "Price Feed Parser"
 
 ### Step 5.3: Deploy Using PowerShell (Windows)
 ```powershell
-# Navigate to deployment folder
-cd deployment
+# Navigate to project root
+cd "Price Feed Parser"
 
-# Run deployment script
-.\deploy-mvp.ps1 -NotificationEmail "your-email@example.com"
+# Navigate to infrastructure folder
+cd infra
+
+# Initialize Terraform
+terraform init
+
+# Plan deployment (review what will be created)
+terraform plan -var="notification_email=your-email@example.com"
+
+# Deploy infrastructure
+terraform apply -var="notification_email=your-email@example.com"
+
+# Type 'yes' when prompted to confirm
 ```
 
 **Replace `your-email@example.com` with your actual email address!**
 
 ### Step 5.4: Deploy Using Bash (Mac/Linux)
 ```bash
-# Navigate to deployment folder
-cd deployment
+# Navigate to project root
+cd "Price Feed Parser"
 
-# Set your email
-export NOTIFICATION_EMAIL="your-email@example.com"
+# Navigate to infrastructure folder
+cd infra
 
-# Make script executable
-chmod +x deploy-mvp.sh
+# Initialize Terraform
+terraform init
 
-# Run deployment
-./deploy-mvp.sh
+# Plan deployment
+terraform plan -var="notification_email=your-email@example.com"
+
+# Deploy infrastructure  
+terraform apply -var="notification_email=your-email@example.com"
+
+# Type 'yes' when prompted to confirm
 ```
 
 ### Step 5.5: What Happens During Deployment
@@ -264,27 +284,46 @@ When successful, you'll see:
 
 ## 6. Configure API Credentials
 
-### Step 6.1: Update Secrets Manager
+### Step 6.1: Update SSM Parameter Store
 **Option A: Using AWS Console (Easier for beginners)**
-1. **Go to AWS Console** → Search "Secrets Manager"
-2. **Click on** `stock-pipeline-fyers-credentials`
-3. **Click "Retrieve secret value"**
-4. **Click "Edit"**
-5. **Replace the JSON** with your actual credentials:
-```json
-{
-  "access_token": "your_actual_access_token",
-  "client_id": "your_actual_client_id", 
-  "refresh_token": "your_actual_refresh_token"
-}
-```
-6. **Click "Save"**
+1. **Go to AWS Console** → Search "Systems Manager" or "SSM"
+2. **Click "Parameter Store"** in the left sidebar
+3. **Find parameters starting with** `/stock-pipeline-mvp/fyers/`
+4. **Click on** `/stock-pipeline-mvp/fyers/client_id`
+5. **Click "Edit"**
+6. **Update the value** with your actual client ID
+7. **Click "Save changes"**
+8. **Repeat for**:
+   - `/stock-pipeline-mvp/fyers/app_secret`
+   - `/stock-pipeline-mvp/fyers/refresh_token`
+   - `/stock-pipeline-mvp/fyers/pin` (optional)
 
 **Option B: Using AWS CLI**
 ```bash
-aws secretsmanager update-secret \
-   --secret-id stock-pipeline-fyers-credentials \
-    --secret-string '{"access_token":"YOUR_TOKEN","client_id":"YOUR_CLIENT_ID","refresh_token":"YOUR_REFRESH_TOKEN"}'
+# Set all parameters at once
+aws ssm put-parameter \
+  --name "/stock-pipeline-mvp/fyers/client_id" \
+  --value "YOUR_CLIENT_ID" \
+  --type "SecureString" \
+  --overwrite
+
+aws ssm put-parameter \
+  --name "/stock-pipeline-mvp/fyers/app_secret" \
+  --value "YOUR_APP_SECRET" \
+  --type "SecureString" \
+  --overwrite
+
+aws ssm put-parameter \
+  --name "/stock-pipeline-mvp/fyers/refresh_token" \
+  --value "YOUR_REFRESH_TOKEN" \
+  --type "SecureString" \
+  --overwrite
+
+aws ssm put-parameter \
+  --name "/stock-pipeline-mvp/fyers/pin" \
+  --value "YOUR_PIN" \
+  --type "SecureString" \
+  --overwrite
 ```
 
 ### Step 6.2: Confirm Email Subscription

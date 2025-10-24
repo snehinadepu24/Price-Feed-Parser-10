@@ -317,8 +317,8 @@ def lambda_handler(event, context):
         if 'date' in event:
             processing_date = datetime.strptime(event['date'], '%Y-%m-%d')
         else:
-            # Default to yesterday
-            processing_date = datetime.utcnow() - timedelta(days=1)
+            # Default to today (ETL runs at 4 PM after market close, processes same day's data)
+            processing_date = datetime.utcnow()
         
         # Initialize ETL processor
         etl = LightweightETL()

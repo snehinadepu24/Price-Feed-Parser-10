@@ -53,8 +53,11 @@ These services are preserved in code but commented out to avoid costs:
 
 ### 1. Clone and Setup
 ```bash
-git clone <repository>
-cd "Price Feed Parser"
+# Clone from GitHub
+git clone https://github.com/snehinadepu24/Price-Feed-Parser-10.git
+cd Price-Feed-Parser-10
+
+# OR download ZIP from: https://github.com/snehinadepu24/Price-Feed-Parser-10
 ```
 
 ### 2. Deploy MVP Infrastructure
