@@ -240,21 +240,26 @@ class LightweightETL:
                     'date': date_str
                 }
             
-            # Process files and collect records
+            # Process ONLY the latest raw file (each file contains full day's data)
+            # Sort keys by timestamp descending and take the first one
+            raw_keys_sorted = sorted(raw_keys, reverse=True)
+            latest_key = raw_keys_sorted[0]
+            
+            logger.info(f"Processing latest raw file: {latest_key} (ignoring {len(raw_keys)-1} older duplicate files)")
+            
             all_records = []
             processed_files = 0
             symbols_set = set()
             
-            for key in raw_keys:
-                raw_data = self.download_json_file(bucket, key)
-                if raw_data:
-                    records = self.process_raw_json(raw_data)
-                    all_records.extend(records)
-                    processed_files += 1
-                    
-                    # Track unique symbols
-                    for record in records:
-                        symbols_set.add(record['symbol_clean'])
+            raw_data = self.download_json_file(bucket, latest_key)
+            if raw_data:
+                records = self.process_raw_json(raw_data)
+                all_records.extend(records)
+                processed_files = 1
+                
+                # Track unique symbols
+                for record in records:
+                    symbols_set.add(record['symbol_clean'])
             
             # Group records by symbol for partitioned output
             records_by_symbol = {}

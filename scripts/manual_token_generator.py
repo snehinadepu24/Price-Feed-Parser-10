@@ -176,7 +176,7 @@ def step3_update_ssm(config, access_token, refresh_token):
         ssm_client = session.client('ssm', region_name=config['aws_region'])
         
         # SSM parameter names
-    project_prefix = "stock-pipeline"  # Adjust if different
+        project_prefix = "stock-pipeline"  # Adjust if different
         access_token_param = f"/{project_prefix}/fyers/access_token"
         refresh_token_param = f"/{project_prefix}/fyers/refresh_token"
         client_id_param = f"/{project_prefix}/fyers/client_id"
@@ -274,7 +274,7 @@ def refresh_existing_token(config):
         session = boto3.Session(profile_name=config['aws_profile'])
         ssm_client = session.client('ssm', region_name=config['aws_region'])
         
-    project_prefix = "stock-pipeline"
+        project_prefix = "stock-pipeline"
         refresh_token_param = f"/{project_prefix}/fyers/refresh_token"
         
         response = ssm_client.get_parameter(Name=refresh_token_param, WithDecryption=True)
